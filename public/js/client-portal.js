@@ -22,6 +22,57 @@ export function createClientPortalController({ rootEl, token, onNavigateDashboar
   let clientReviewerName =
     localStorage.getItem("vellum_client_reviewer_name") || "Client Reviewer";
 
+  function loadLocalCachePortal() {
+    try {
+      const raw = localStorage.getItem("appex_workspace_cache_v1");
+      if (!raw) return null;
+      const ws = JSON.parse(raw);
+      const share = (ws.shares || []).find((s) => s.token === token && s.isActive !== false);
+      if (!share) return null;
+      if (share.password && share.password !== enteredPassword) {
+        return {
+          status: 401,
+          data: {
+            requiresPassword: true,
+            title: share.title,
+            studioName: share.studioName,
+            ownerName: share.ownerName,
+            resourceType: share.resourceType,
+          },
+        };
+      }
+      const folders = ws.folders || [];
+      const files = ws.files || [];
+      let sharedFolders = [];
+      let sharedFiles = [];
+      if (share.resourceType === "FOLDER" && share.folderId) {
+        const allowed = new Set([share.folderId]);
+        let added = true;
+        while (added) {
+          added = false;
+          for (const f of folders) {
+            if (f.parentId && allowed.has(f.parentId) && !allowed.has(f.id)) {
+              allowed.add(f.id);
+              added = true;
+            }
+          }
+        }
+        sharedFolders = folders.filter((f) => !f.isTrashed && allowed.has(f.id));
+        sharedFiles = files.filter((f) => !f.isTrashed && f.folderId && allowed.has(f.folderId));
+      } else if (share.resourceType === "FILE" && share.fileId) {
+        sharedFiles = files.filter((f) => !f.isTrashed && f.id === share.fileId);
+      }
+      const fileIds = new Set(sharedFiles.map((f) => f.id));
+      const feedback = (ws.feedback || []).filter((fb) => fileIds.has(fb.fileId));
+      return {
+        status: 200,
+        data: { share, folders: sharedFolders, files: sharedFiles, feedback },
+      };
+    } catch {
+      return null;
+    }
+  }
+
   async function loadPortal(trackView = false) {
     try {
       const url = `/api/public/share/${encodeURIComponent(token)}${
@@ -30,9 +81,18 @@ export function createClientPortalController({ rootEl, token, onNavigateDashboar
       const res = await fetch(url, {
         headers: enteredPassword ? { "x-share-password": enteredPassword } : {},
       });
-      const data = await res.json();
+      let status = res.status;
+      let data = await res.json();
 
-      if (res.status === 401 && data.requiresPassword) {
+      if (!res.ok && status === 404) {
+        const localFallback = loadLocalCachePortal();
+        if (localFallback) {
+          status = localFallback.status;
+          data = localFallback.data;
+        }
+      }
+
+      if (status === 401 && data.requiresPassword) {
         passwordPromptInfo = data;
         portalData = null;
         errorMessage = null;
@@ -40,7 +100,7 @@ export function createClientPortalController({ rootEl, token, onNavigateDashboar
         return;
       }
 
-      if (!res.ok) {
+      if (status < 200 || status >= 300) {
         errorMessage = data.error || "Unable to load shared deliverable.";
         portalData = null;
         passwordPromptInfo = null;

@@ -25,7 +25,7 @@
     </div>
   </div>
 
-  <!-- Hidden global file input for uploads -->
+  <!-- Hidden global file & folder inputs for instant uploads -->
   <input
     id="global-file-input"
     type="file"
@@ -33,7 +33,15 @@
     accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip"
     class="hidden"
   />
+  <input
+    id="global-folder-input"
+    type="file"
+    webkitdirectory
+    directory
+    multiple
+    class="hidden"
+  />
 
-  <script type="module" src="/js/app.js?v=7"></script>
+  <script type="module" src="/js/app.js?v=8"></script>
 </body>
 </html>

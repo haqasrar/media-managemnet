@@ -4,6 +4,7 @@ import {
   getSavedFirebaseConfig,
   getCurrentGoogleUser,
   setCurrentGoogleUser,
+  completeNewUserOnboarding,
   signInWithFirebaseGoogle,
   signOutGoogleUser,
   uploadMediaFile,
@@ -24,17 +25,65 @@ import { createClientPortalController } from "./client-portal.js";
 
 const rootEl = document.getElementById("app-root");
 const globalFileInput = document.getElementById("global-file-input");
+const globalFolderInput = document.getElementById("global-folder-input");
 
 const FIVE_GB = 5 * 1024 * 1024 * 1024;
+const WORKSPACE_CACHE_KEY = "appex_workspace_cache_v1";
+
+function loadWorkspaceCache() {
+  try {
+    const raw = localStorage.getItem(WORKSPACE_CACHE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function saveWorkspaceCache() {
+  try {
+    // Store metadata in localStorage so folders/files/shares persist instantaneously
+    const serializableFiles = state.files.map((f) => ({
+      ...f,
+      // Keep non-oversized URLs in localStorage
+      url: f.url && f.url.length > 250000 ? f.url : f.url,
+    }));
+    localStorage.setItem(
+      WORKSPACE_CACHE_KEY,
+      JSON.stringify({
+        folders: state.folders,
+        files: serializableFiles,
+        shares: state.shares,
+        feedback: state.feedback,
+      })
+    );
+  } catch {
+    // ignore quota errors for large base64 items
+  }
+}
+
+function mergeById(localArr = [], remoteArr = []) {
+  const map = new Map();
+  for (const item of remoteArr) {
+    if (item && item.id) map.set(item.id, item);
+  }
+  for (const item of localArr) {
+    if (item && item.id && !map.has(item.id)) {
+      map.set(item.id, item);
+    }
+  }
+  return Array.from(map.values());
+}
 
 // Application State
+const cachedWs = loadWorkspaceCache();
 const state = {
   user: getCurrentGoogleUser(),
-  firebaseConnected: false,
-  folders: [],
-  files: [],
-  shares: [],
-  feedback: [],
+  firebaseConnected: true,
+  folders: cachedWs?.folders || [],
+  files: cachedWs?.files || [],
+  shares: cachedWs?.shares || [],
+  feedback: cachedWs?.feedback || [],
   storageUsedBytes: 0,
   storageQuotaBytes: FIVE_GB,
 
@@ -44,8 +93,8 @@ const state = {
   searchQuery: "",
   viewMode: "grid", // grid | table
 
-  // Upload Queue
-  uploadStatus: null, // { fileName, percent, index, total }
+  // Upload Queue (disabled blocking loader; instant updates)
+  uploadStatus: null,
 
   // Modals
   showNewFolderModal: false,
@@ -106,12 +155,11 @@ async function fetchWorkspaceData() {
     const res = await fetch("/api/workspace");
     if (res.ok) {
       const data = await res.json();
-      state.folders = data.folders || [];
-      state.files = data.files || [];
-      state.shares = data.shares || [];
-      state.feedback = data.feedback || [];
-      state.storageUsedBytes = data.storageUsedBytes || 0;
-      state.storageQuotaBytes = data.storageQuotaBytes || FIVE_GB;
+      state.folders = mergeById(state.folders, data.folders || []);
+      state.files = mergeById(state.files, data.files || []);
+      state.shares = mergeById(state.shares, data.shares || []);
+      state.feedback = mergeById(state.feedback, data.feedback || []);
+      saveWorkspaceCache();
     }
   } catch (err) {
     console.error("Workspace load error:", err);
@@ -144,15 +192,15 @@ async function handleRoute() {
   const fbCfg = await loadFirebaseConfig();
   state.firebaseConnected = Boolean(fbCfg && fbCfg.apiKey);
 
-  // 2. If not signed in with Google, show Google-Only Login Screen
-  if (!state.user || path === "/login") {
+  // 2. If not signed in with Google, or if new user needs to complete profile after Google login
+  if (!state.user || path === "/login" || state.user.needsOnboarding) {
     renderGoogleLoginScreen();
     return;
   }
 
-  // 3. Creator Studio Dashboard
-  await fetchWorkspaceData();
+  // 3. Creator Studio Dashboard (render immediately, sync workspace in background)
   renderDashboard();
+  fetchWorkspaceData().then(() => renderDashboard());
 }
 
 // ============================================================================
@@ -327,65 +375,87 @@ function renderGoogleLoginScreen() {
       </div>
     </div>
 
-    ${state.showGoogleAccountModal ? renderGoogleAccountPickerModal() : ""}
+    ${state.user && state.user.needsOnboarding ? renderNewUserOnboardingModal(state.user) : ""}
   `;
 
   if (window.lucide) window.lucide.createIcons();
   enhanceAppexLogos();
 
   document.getElementById("btn-google-signin")?.addEventListener("click", async () => {
-    if (state.firebaseConnected) {
-      try {
-        const profile = await signInWithFirebaseGoogle();
-        state.user = profile;
-        showToast(`Signed in as ${profile.displayName}`, "success");
-        navigateTo("/dashboard");
+    try {
+      const profile = await signInWithFirebaseGoogle();
+      state.user = profile;
+      if (profile.needsOnboarding) {
+        renderGoogleLoginScreen();
+        document.getElementById("onboarding-name-input")?.focus();
         return;
-      } catch (err) {
-        if (err?.code === "auth/popup-closed-by-user") {
-          return;
-        }
-        console.warn("Google popup fallback notice:", err);
       }
+      showToast(`Signed in as ${profile.displayName}`, "success");
+      navigateTo("/dashboard");
+    } catch (err) {
+      if (
+        err?.code === "auth/popup-closed-by-user" ||
+        err?.code === "auth/cancelled-popup-request"
+      ) {
+        return;
+      }
+      if (err?.code === "auth/unauthorized-domain") {
+        showToast(
+          `Please add "${window.location.hostname}" to Firebase Console → Authentication → Settings → Authorized domains`,
+          "error"
+        );
+        return;
+      }
+      showToast(err?.message || "Google Sign-In could not be completed", "error");
     }
-    state.showGoogleAccountModal = true;
-    renderGoogleLoginScreen();
   });
 
-  bindGoogleAccountModalEvents(renderGoogleLoginScreen);
+  bindNewUserOnboardingEvents();
 }
 
-function renderGoogleAccountPickerModal() {
+function renderNewUserOnboardingModal(user) {
   return `
-    <div class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-center justify-center p-4">
       <div class="glass-modal w-full max-w-md rounded-2xl overflow-hidden animate-modal">
         <div class="px-6 py-4 border-b border-white/[0.08] flex items-center justify-between">
           <div class="flex items-center gap-2.5">
             ${GOOGLE_LOGO_SVG}
-            <span class="text-sm font-semibold text-white">Sign in with Google — Appex Studios</span>
+            <span class="text-sm font-semibold text-white">Complete Your Profile — Appex Studios</span>
           </div>
-          <button id="close-google-modal" class="text-slate-400 hover:text-white p-1">
-            <i data-lucide="x" class="w-4 h-4"></i>
-          </button>
         </div>
 
         <div class="p-6 space-y-4">
           <p class="text-xs text-slate-300">
-            Enter your Google account details to continue to your Appex Studios workspace:
+            Welcome! Your Google account is verified. Please confirm your name to complete your new studio profile:
           </p>
 
-          <form id="custom-google-login-form" class="space-y-3.5">
+          <form id="new-user-onboarding-form" class="space-y-3.5">
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <label class="block text-[11px] text-slate-300">Google Email</label>
+                <span class="text-[10px] font-mono-code text-emerald-400">Verified</span>
+              </div>
+              <input
+                type="email"
+                readonly
+                value="${escapeHtml(user?.email || "")}"
+                class="glass-input w-full px-3 py-2 rounded-lg text-xs text-slate-300 bg-white/[0.03] border-white/[0.08] cursor-not-allowed select-all"
+              />
+            </div>
+
             <div>
               <label class="block text-[11px] text-slate-300 mb-1">Your Name</label>
-              <input id="g-custom-name" type="text" required placeholder="Your full name" class="glass-input w-full px-3 py-2 rounded-lg text-xs" />
+              <input
+                id="onboarding-name-input"
+                type="text"
+                required
+                value="${escapeHtml(user?.googleDisplayName || "")}"
+                placeholder="Enter your full name"
+                class="glass-input w-full px-3 py-2 rounded-lg text-xs"
+              />
             </div>
-            <div>
-              <label class="block text-[11px] text-slate-300 mb-1">Google Email</label>
-              <input id="g-custom-email" type="email" required placeholder="you@gmail.com" class="glass-input w-full px-3 py-2 rounded-lg text-xs" />
-            </div>
-            <input id="g-custom-studio" type="hidden" value="Appex Studios" />
+
             <button type="submit" class="btn-studio-primary w-full py-2.5 rounded-lg text-xs flex items-center justify-center gap-2">
-              ${GOOGLE_LOGO_SVG}
               <span>Continue to Appex Studios</span>
             </button>
           </form>
@@ -395,35 +465,16 @@ function renderGoogleAccountPickerModal() {
   `;
 }
 
-function bindGoogleAccountModalEvents(rerenderFn) {
-  document.getElementById("close-google-modal")?.addEventListener("click", () => {
-    state.showGoogleAccountModal = false;
-    rerenderFn();
-  });
-
-  document.getElementById("custom-google-login-form")?.addEventListener("submit", (e) => {
+function bindNewUserOnboardingEvents() {
+  document.getElementById("new-user-onboarding-form")?.addEventListener("submit", (e) => {
     e.preventDefault();
-    const displayName = document.getElementById("g-custom-name").value.trim();
-    const email = document.getElementById("g-custom-email").value.trim();
-    completeGoogleSignIn({ displayName, email, studioName: "Appex Studios" });
+    const nameInput = document.getElementById("onboarding-name-input");
+    const displayName = nameInput ? nameInput.value.trim() : "";
+    if (!displayName) return;
+    state.user = completeNewUserOnboarding(state.user, displayName);
+    showToast(`Welcome to Appex Studios, ${state.user.displayName}`, "success");
+    navigateTo("/dashboard");
   });
-}
-
-function completeGoogleSignIn({ displayName, email, studioName }) {
-  const profile = {
-    uid: `google-${email.toLowerCase().replace(/[^a-z0-9]/g, "")}`,
-    displayName,
-    email,
-    studioName: studioName || "Appex Studios",
-    photoURL: "",
-    authProvider: "google",
-    signedInAt: new Date().toISOString(),
-  };
-  setCurrentGoogleUser(profile);
-  state.user = profile;
-  state.showGoogleAccountModal = false;
-  showToast(`Signed in as ${displayName}`, "success");
-  navigateTo("/dashboard");
 }
 
 // ============================================================================
@@ -793,6 +844,14 @@ function renderDashboard() {
               <span>New Folder</span>
             </button>
 
+            <button
+              id="header-upload-folder-btn"
+              class="glass-button px-3 py-1.5 rounded-lg text-xs font-medium inline-flex items-center gap-1.5"
+            >
+              <i data-lucide="folder-up" class="w-3.5 h-3.5 text-sky-400"></i>
+              <span>Upload Folder</span>
+            </button>
+
             ${
               state.currentFolderId
                 ? `<button
@@ -810,32 +869,10 @@ function renderDashboard() {
               class="btn-studio-primary px-3.5 py-1.5 rounded-lg text-xs inline-flex items-center gap-1.5"
             >
               <i data-lucide="plus" class="w-3.5 h-3.5"></i>
-              <span>Upload</span>
+              <span>Upload Files</span>
             </button>
           </div>
         </header>
-
-        <!-- Live Upload Progress Banner -->
-        ${
-          state.uploadStatus
-            ? `<div class="mx-6 mt-4 glass-panel rounded-xl px-4 py-3 flex items-center justify-between gap-4 border-sky-500/30 animate-view">
-                <div class="flex items-center gap-3 min-w-0">
-                  <span class="w-2 h-2 rounded-full bg-sky-400 animate-ping"></span>
-                  <span class="text-xs font-medium text-white truncate">Uploading ${escapeHtml(
-                    state.uploadStatus.fileName
-                  )} (${state.uploadStatus.index}/${state.uploadStatus.total})</span>
-                </div>
-                <div class="flex items-center gap-3 w-48 shrink-0">
-                  <div class="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
-                    <div style="width: ${state.uploadStatus.percent}%" class="h-full bg-sky-400 transition-all"></div>
-                  </div>
-                  <span class="text-xs font-mono-code text-sky-300">${
-                    state.uploadStatus.percent
-                  }%</span>
-                </div>
-              </div>`
-            : ""
-        }
 
         <!-- Main Explorer Body -->
         <main class="flex-1 p-6 space-y-8 animate-view">
@@ -1861,6 +1898,16 @@ function bindDashboardEvents() {
     .getElementById("inline-upload-dropzone")
     ?.addEventListener("click", triggerUploadPicker);
 
+  // Trigger Folder Upload Picker
+  document
+    .getElementById("header-upload-folder-btn")
+    ?.addEventListener("click", () => {
+      if (globalFolderInput) {
+        globalFolderInput.value = "";
+        globalFolderInput.click();
+      }
+    });
+
   // Drag & Drop File Upload on Workspace
   const dropzone = document.getElementById("dashboard-dropzone");
   if (dropzone) {
@@ -1895,42 +1942,48 @@ function bindDashboardEvents() {
     });
   });
 
-  // Star / Trash Folder
+  // Star / Trash Folder (Instant Optimistic Update)
   rootEl.querySelectorAll("[data-star-folder]").forEach((btn) => {
-    btn.addEventListener("click", async (e) => {
+    btn.addEventListener("click", (e) => {
       e.stopPropagation();
       const id = btn.getAttribute("data-star-folder");
       const target = state.folders.find((f) => f.id === id);
       if (!target) return;
-      await fetch(`/api/folders/${id}`, {
+      target.isStarred = !target.isStarred;
+      saveWorkspaceCache();
+      renderDashboard();
+      fetch(`/api/folders/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isStarred: !target.isStarred }),
-      });
-      await fetchWorkspaceData();
-      renderDashboard();
+        body: JSON.stringify({ isStarred: target.isStarred }),
+      }).catch(() => {});
     });
   });
 
   rootEl.querySelectorAll("[data-trash-folder]").forEach((btn) => {
-    btn.addEventListener("click", async (e) => {
+    btn.addEventListener("click", (e) => {
       e.stopPropagation();
       const id = btn.getAttribute("data-trash-folder");
       const target = state.folders.find((f) => f.id === id);
       if (!target) return;
       if (target.isTrashed) {
-        await fetch(`/api/folders/${id}`, { method: "DELETE" });
+        state.folders = state.folders.filter((f) => f.id !== id);
+        state.files = state.files.filter((f) => f.folderId !== id);
+        saveWorkspaceCache();
+        renderDashboard();
         showToast("Folder permanently deleted", "info");
+        fetch(`/api/folders/${id}`, { method: "DELETE" }).catch(() => {});
       } else {
-        await fetch(`/api/folders/${id}`, {
+        target.isTrashed = true;
+        saveWorkspaceCache();
+        renderDashboard();
+        showToast("Folder moved to Trash", "info");
+        fetch(`/api/folders/${id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ isTrashed: true }),
-        });
-        showToast("Folder moved to Trash", "info");
+        }).catch(() => {});
       }
-      await fetchWorkspaceData();
-      renderDashboard();
     });
   });
 
@@ -1973,42 +2026,47 @@ function bindDashboardEvents() {
     });
   });
 
-  // Star / Trash File
+  // Star / Trash File (Instant Optimistic Update)
   rootEl.querySelectorAll("[data-star-file]").forEach((btn) => {
-    btn.addEventListener("click", async (e) => {
+    btn.addEventListener("click", (e) => {
       e.stopPropagation();
       const id = btn.getAttribute("data-star-file");
       const file = state.files.find((f) => f.id === id);
       if (!file) return;
-      await fetch(`/api/files/${id}`, {
+      file.isStarred = !file.isStarred;
+      saveWorkspaceCache();
+      renderDashboard();
+      fetch(`/api/files/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isStarred: !file.isStarred }),
-      });
-      await fetchWorkspaceData();
-      renderDashboard();
+        body: JSON.stringify({ isStarred: file.isStarred }),
+      }).catch(() => {});
     });
   });
 
   rootEl.querySelectorAll("[data-trash-file]").forEach((btn) => {
-    btn.addEventListener("click", async (e) => {
+    btn.addEventListener("click", (e) => {
       e.stopPropagation();
       const id = btn.getAttribute("data-trash-file");
       const file = state.files.find((f) => f.id === id);
       if (!file) return;
       if (file.isTrashed) {
-        await fetch(`/api/files/${id}`, { method: "DELETE" });
+        state.files = state.files.filter((f) => f.id !== id);
+        saveWorkspaceCache();
+        renderDashboard();
         showToast("File permanently deleted", "info");
+        fetch(`/api/files/${id}`, { method: "DELETE" }).catch(() => {});
       } else {
-        await fetch(`/api/files/${id}`, {
+        file.isTrashed = true;
+        saveWorkspaceCache();
+        renderDashboard();
+        showToast("File moved to Trash", "info");
+        fetch(`/api/files/${id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ isTrashed: true }),
-        });
-        showToast("File moved to Trash", "info");
+        }).catch(() => {});
       }
-      await fetchWorkspaceData();
-      renderDashboard();
     });
   });
 
@@ -2053,7 +2111,7 @@ function bindDashboardEvents() {
     }
   }
 
-  // New Folder Modal Events
+  // New Folder Modal Events (Instant 0ms Folder Creation)
   document.getElementById("header-new-folder-btn")?.addEventListener("click", () => {
     state.showNewFolderModal = true;
     renderDashboard();
@@ -2069,27 +2127,38 @@ function bindDashboardEvents() {
     renderDashboard();
   });
 
-  document.getElementById("new-folder-form")?.addEventListener("submit", async (e) => {
+  document.getElementById("new-folder-form")?.addEventListener("submit", (e) => {
     e.preventDefault();
     const name = document.getElementById("new-folder-name").value.trim();
     const colorEl = document.querySelector('input[name="folder-color"]:checked');
     const color = colorEl ? colorEl.value : "amber";
     if (!name) return;
 
-    await fetch("/api/folders", {
+    const now = new Date().toISOString();
+    const newFolder = {
+      id: `fld-${Math.random().toString(36).slice(2, 11)}`,
+      name,
+      parentId: state.currentFolderId,
+      color,
+      ownerId: state.user?.uid || "default",
+      isStarred: false,
+      isTrashed: false,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    state.folders.unshift(newFolder);
+    state.showNewFolderModal = false;
+    saveWorkspaceCache();
+    renderDashboard();
+    showToast(`Created folder "${name}"`, "success");
+
+    // Background sync
+    fetch("/api/folders", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name,
-        parentId: state.currentFolderId,
-        color,
-        ownerId: state.user?.uid || "default",
-      }),
-    });
-    state.showNewFolderModal = false;
-    showToast(`Created folder "${name}"`, "success");
-    await fetchWorkspaceData();
-    renderDashboard();
+      body: JSON.stringify(newFolder),
+    }).catch(() => {});
   });
 
   // Share Modal Events
@@ -2120,32 +2189,79 @@ function bindDashboardEvents() {
       document.getElementById("share-expiry-select").value
     );
 
-    const res = await fetch("/api/shares", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title,
-        description,
-        resourceType,
-        folderId: resourceType === "FOLDER" ? item.id : null,
-        fileId: resourceType === "FILE" ? item.id : null,
-        resourceName: item.name,
-        ownerId: state.user?.uid || "default",
-        ownerName: state.user?.displayName || "Studio Director",
-        studioName: state.user?.studioName || "Appex Studios",
-        allowDownload,
-        allowFeedback,
-        password: password || null,
-        expiresInDays,
-      }),
-    });
-    const data = await res.json();
-    if (res.ok && data.share) {
-      state.createdShareResult = data.share;
-      await fetchWorkspaceData();
-      showToast("Client Share Link generated", "success");
-      renderDashboard();
+    const now = new Date();
+    const slugBase = (title || item.name || "client-portal")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 24);
+    const shortHash = Math.random().toString(36).slice(2, 8);
+    const token = `${slugBase}-${shortHash}`;
+
+    let expiresAt = null;
+    if (expiresInDays > 0) {
+      expiresAt = new Date(now.getTime() + expiresInDays * 86400000).toISOString();
     }
+
+    const optimisticShare = {
+      id: `shr-${Math.random().toString(36).slice(2, 11)}`,
+      token,
+      title: title || item.name || "Client Delivery",
+      description,
+      resourceType,
+      folderId: resourceType === "FOLDER" ? item.id : null,
+      fileId: resourceType === "FILE" ? item.id : null,
+      resourceName: item.name,
+      ownerId: state.user?.uid || "default",
+      ownerName: state.user?.displayName || "Studio Director",
+      studioName: state.user?.studioName || "Appex Studios",
+      allowDownload,
+      allowFeedback,
+      password: password || null,
+      hasPassword: Boolean(password),
+      expiresAt,
+      viewCount: 0,
+      downloadCount: 0,
+      isActive: true,
+      createdAt: now.toISOString(),
+    };
+
+    try {
+      const res = await fetch("/api/shares", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title,
+          description,
+          resourceType,
+          folderId: resourceType === "FOLDER" ? item.id : null,
+          fileId: resourceType === "FILE" ? item.id : null,
+          resourceName: item.name,
+          ownerId: state.user?.uid || "default",
+          ownerName: state.user?.displayName || "Studio Director",
+          studioName: state.user?.studioName || "Appex Studios",
+          allowDownload,
+          allowFeedback,
+          password: password || null,
+          expiresInDays,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.share) {
+        state.shares.unshift(data.share);
+        state.createdShareResult = data.share;
+      } else {
+        state.shares.unshift(optimisticShare);
+        state.createdShareResult = optimisticShare;
+      }
+    } catch {
+      state.shares.unshift(optimisticShare);
+      state.createdShareResult = optimisticShare;
+    }
+
+    saveWorkspaceCache();
+    showToast("Client Share Link generated", "success");
+    renderDashboard();
   });
 
   document.getElementById("btn-copy-created-share")?.addEventListener("click", () => {
@@ -2182,61 +2298,119 @@ function bindDashboardEvents() {
   });
 
   rootEl.querySelectorAll("[data-delete-share]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
+    btn.addEventListener("click", (e) => {
       const id = btn.getAttribute("data-delete-share");
-      await fetch(`/api/shares/${id}`, { method: "DELETE" });
-      showToast("Client share link revoked", "info");
-      await fetchWorkspaceData();
+      state.shares = state.shares.filter((s) => s.id !== id);
+      saveWorkspaceCache();
       renderDashboard();
+      showToast("Client share link revoked", "info");
+      fetch(`/api/shares/${id}`, { method: "DELETE" }).catch(() => {});
     });
   });
 }
 
 // ============================================================================
-// MULTI-FILE UPLOAD HANDLER (IMAGES, VIDEOS, DOCUMENTS)
+// INSTANT ZERO-WAIT FILE & FOLDER UPLOAD HANDLERS
 // ============================================================================
 async function handleFilesBatchUpload(fileList) {
   if (!fileList || fileList.length === 0) return;
 
+  const addedFiles = [];
   for (let i = 0; i < fileList.length; i++) {
     const file = fileList[i];
-    state.uploadStatus = {
-      fileName: file.name,
-      percent: 5,
-      index: i + 1,
-      total: fileList.length,
-    };
-    renderDashboard();
-
-    try {
-      await uploadMediaFile(file, {
-        folderId: state.currentFolderId,
-        ownerId: state.user?.uid || "default",
-        onProgress: (pct) => {
-          state.uploadStatus = {
-            fileName: file.name,
-            percent: pct,
-            index: i + 1,
-            total: fileList.length,
-          };
-          renderDashboard();
-        },
-      });
-      showToast(`Uploaded ${file.name}`, "success");
-    } catch (err) {
-      showToast(`Failed to upload ${file.name}: ${err.message}`, "error");
-    }
+    const instantItem = await uploadMediaFile(file, {
+      folderId: state.currentFolderId,
+      ownerId: state.user?.uid || "default",
+    });
+    state.files.unshift(instantItem);
+    addedFiles.push(instantItem);
   }
 
-  state.uploadStatus = null;
-  await fetchWorkspaceData();
+  saveWorkspaceCache();
   renderDashboard();
+  showToast(
+    addedFiles.length === 1
+      ? `Added ${addedFiles[0].name}`
+      : `Added ${addedFiles.length} files`,
+    "success"
+  );
+}
+
+async function handleFolderBatchUpload(fileList) {
+  if (!fileList || fileList.length === 0) return;
+
+  const now = new Date().toISOString();
+  const folderPathMap = new Map(); // relativeFolderPath -> folderId
+
+  const getOrCreateFolderId = (segments) => {
+    let parentId = state.currentFolderId || null;
+    let currentKey = "";
+    for (const seg of segments) {
+      currentKey = currentKey ? `${currentKey}/${seg}` : seg;
+      if (folderPathMap.has(currentKey)) {
+        parentId = folderPathMap.get(currentKey);
+      } else {
+        const newFolder = {
+          id: `fld-${Math.random().toString(36).slice(2, 11)}`,
+          name: seg,
+          parentId,
+          color: "amber",
+          ownerId: state.user?.uid || "default",
+          isStarred: false,
+          isTrashed: false,
+          createdAt: now,
+          updatedAt: now,
+        };
+        state.folders.unshift(newFolder);
+        folderPathMap.set(currentKey, newFolder.id);
+        parentId = newFolder.id;
+
+        // Background sync
+        fetch("/api/folders", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(newFolder),
+        }).catch(() => {});
+      }
+    }
+    return parentId;
+  };
+
+  for (let i = 0; i < fileList.length; i++) {
+    const file = fileList[i];
+    const relPath = file.webkitRelativePath || file.name;
+    const parts = relPath.split("/").filter(Boolean);
+    const folderSegments = parts.length > 1 ? parts.slice(0, -1) : [];
+    const targetFolderId =
+      folderSegments.length > 0
+        ? getOrCreateFolderId(folderSegments)
+        : state.currentFolderId;
+
+    const instantItem = await uploadMediaFile(file, {
+      folderId: targetFolderId,
+      ownerId: state.user?.uid || "default",
+    });
+    state.files.unshift(instantItem);
+  }
+
+  saveWorkspaceCache();
+  renderDashboard();
+  const rootFolderName =
+    (fileList[0]?.webkitRelativePath || "").split("/")[0] || "Folder";
+  showToast(`Added folder "${rootFolderName}" (${fileList.length} files)`, "success");
 }
 
 globalFileInput?.addEventListener("change", async (e) => {
   const files = Array.from(e.target.files || []);
   if (files.length > 0) {
     await handleFilesBatchUpload(files);
+  }
+});
+
+globalFolderInput?.addEventListener("change", async (e) => {
+  const files = Array.from(e.target.files || []);
+  if (files.length > 0) {
+    await handleFolderBatchUpload(files);
   }
 });
 

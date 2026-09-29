@@ -19,16 +19,40 @@ export function createClientPortalController({ rootEl, token, onNavigateDashboar
   let activeCategoryFilter = "ALL";
   let activeFileModal = null;
   let cleanupVideoCanvas = null;
+  let liveSyncTimer = null;
+  let isDestroyed = false;
   let clientReviewerName =
     localStorage.getItem("vellum_client_reviewer_name") || "Client Reviewer";
 
-  function loadLocalCachePortal() {
+  function cleanupPortal() {
+    isDestroyed = true;
+    if (liveSyncTimer) {
+      clearInterval(liveSyncTimer);
+      liveSyncTimer = null;
+    }
+    if (cleanupVideoCanvas) {
+      cleanupVideoCanvas();
+      cleanupVideoCanvas = null;
+    }
+    window.removeEventListener("storage", handleStorageSync);
+  }
+
+  function navigateBackToStudio() {
+    cleanupPortal();
+    if (onNavigateDashboard) onNavigateDashboard();
+  }
+
+  function resolveLocalCachePortal(serverShare = null) {
     try {
       const raw = localStorage.getItem("appex_workspace_cache_v1");
       if (!raw) return null;
       const ws = JSON.parse(raw);
-      const share = (ws.shares || []).find((s) => s.token === token && s.isActive !== false);
+      const localShare = (ws.shares || []).find(
+        (s) => s.token === token && s.isActive !== false
+      );
+      const share = localShare || serverShare;
       if (!share) return null;
+
       if (share.password && share.password !== enteredPassword) {
         return {
           status: 401,
@@ -41,27 +65,62 @@ export function createClientPortalController({ rootEl, token, onNavigateDashboar
           },
         };
       }
+
       const folders = ws.folders || [];
       const files = ws.files || [];
       let sharedFolders = [];
       let sharedFiles = [];
-      if (share.resourceType === "FOLDER" && share.folderId) {
-        const allowed = new Set([share.folderId]);
+
+      if (share.resourceType === "FOLDER") {
+        const allowed = new Set();
+        if (share.folderId) allowed.add(share.folderId);
+        if (serverShare?.folderId) allowed.add(serverShare.folderId);
+
+        // Also match root folder by resourceName in case client & server had different IDs
+        const targetName = String(
+          share.resourceName || serverShare?.resourceName || share.title || ""
+        )
+          .trim()
+          .toLowerCase();
+        if (targetName) {
+          for (const f of folders) {
+            if (!f.isTrashed && String(f.name || "").trim().toLowerCase() === targetName) {
+              allowed.add(f.id);
+            }
+          }
+        }
+
         let added = true;
         while (added) {
           added = false;
           for (const f of folders) {
-            if (f.parentId && allowed.has(f.parentId) && !allowed.has(f.id)) {
+            if (!f.isTrashed && f.parentId && allowed.has(f.parentId) && !allowed.has(f.id)) {
               allowed.add(f.id);
               added = true;
             }
           }
         }
         sharedFolders = folders.filter((f) => !f.isTrashed && allowed.has(f.id));
-        sharedFiles = files.filter((f) => !f.isTrashed && f.folderId && allowed.has(f.folderId));
-      } else if (share.resourceType === "FILE" && share.fileId) {
-        sharedFiles = files.filter((f) => !f.isTrashed && f.id === share.fileId);
+        sharedFiles = files.filter(
+          (f) => !f.isTrashed && f.folderId && allowed.has(f.folderId)
+        );
+      } else if (share.resourceType === "FILE") {
+        const targetIds = new Set(
+          [share.fileId, serverShare?.fileId].filter(Boolean)
+        );
+        const targetName = String(
+          share.resourceName || serverShare?.resourceName || share.title || ""
+        )
+          .trim()
+          .toLowerCase();
+        sharedFiles = files.filter(
+          (f) =>
+            !f.isTrashed &&
+            (targetIds.has(f.id) ||
+              (targetName && String(f.name || "").trim().toLowerCase() === targetName))
+        );
       }
+
       const fileIds = new Set(sharedFiles.map((f) => f.id));
       const feedback = (ws.feedback || []).filter((fb) => fileIds.has(fb.fileId));
       return {
@@ -73,24 +132,173 @@ export function createClientPortalController({ rootEl, token, onNavigateDashboar
     }
   }
 
-  async function loadPortal(trackView = false) {
+  function mergePortalDatasets(serverData, localData) {
+    if (!serverData && !localData) return null;
+    if (!serverData) return localData;
+    if (!localData) return serverData;
+
+    const share = { ...localData.share, ...serverData.share };
+
+    // Determine canonical root folder ID for FOLDER shares
+    const folderMap = new Map();
+    for (const f of [...(serverData.folders || []), ...(localData.folders || [])]) {
+      if (!f || !f.id) continue;
+      if (!folderMap.has(f.id)) {
+        folderMap.set(f.id, { ...f });
+      }
+    }
+
+    // Determine root folder(s) matching share.folderId or share.resourceName
+    const rootFolderName = String(share.resourceName || share.title || "")
+      .trim()
+      .toLowerCase();
+    const rootFolderIds = new Set();
+    if (share.folderId) rootFolderIds.add(share.folderId);
+    for (const f of folderMap.values()) {
+      if (rootFolderName && String(f.name || "").trim().toLowerCase() === rootFolderName) {
+        rootFolderIds.add(f.id);
+      }
+    }
+
+    const canonicalRootId =
+      share.folderId || (rootFolderIds.size > 0 ? Array.from(rootFolderIds)[0] : null);
+
+    // Deduplicate folders and normalize alias root folder IDs to canonicalRootId
+    const mergedFolders = [];
+    const seenFolderKey = new Set();
+    for (const f of folderMap.values()) {
+      const normalizedParentId =
+        f.parentId && rootFolderIds.has(f.parentId) && f.id !== canonicalRootId
+          ? canonicalRootId
+          : f.parentId;
+      const isRootAlias = rootFolderIds.has(f.id);
+      const normalizedId = isRootAlias ? canonicalRootId : f.id;
+      const key = isRootAlias
+        ? `ROOT:${canonicalRootId}`
+        : `${normalizedParentId || "root"}:${String(f.name || "").toLowerCase()}`;
+      if (seenFolderKey.has(key)) continue;
+      seenFolderKey.add(key);
+      mergedFolders.push({
+        ...f,
+        id: normalizedId,
+        parentId: isRootAlias ? f.parentId : normalizedParentId,
+      });
+    }
+
+    // Merge files (prefer persistent non-blob URL if available, deduplicate by id or name+folderId)
+    const fileByKey = new Map();
+    const allCandidateFiles = [...(localData.files || []), ...(serverData.files || [])];
+    for (const f of allCandidateFiles) {
+      if (!f || !f.id) continue;
+      const normalizedFolderId =
+        f.folderId && rootFolderIds.has(f.folderId) ? canonicalRootId : f.folderId;
+      const normalizedFile = { ...f, folderId: normalizedFolderId };
+      const key = `${normalizedFolderId || "file"}:${String(f.name || "").toLowerCase()}:${f.sizeBytes || 0}`;
+      const existing = fileByKey.get(f.id) || fileByKey.get(key);
+      if (!existing) {
+        fileByKey.set(f.id, normalizedFile);
+        fileByKey.set(key, normalizedFile);
+      } else {
+        // Prefer non-blob URL or newer updated status
+        const chosenUrl =
+          existing.url && !existing.url.startsWith("blob:")
+            ? existing.url
+            : normalizedFile.url || existing.url;
+        const mergedFile = {
+          ...existing,
+          ...normalizedFile,
+          id: existing.id,
+          folderId: normalizedFolderId || existing.folderId,
+          url: chosenUrl,
+        };
+        fileByKey.set(existing.id, mergedFile);
+        fileByKey.set(f.id, mergedFile);
+        fileByKey.set(key, mergedFile);
+      }
+    }
+
+    const uniqueFilesMap = new Map();
+    for (const f of fileByKey.values()) {
+      uniqueFilesMap.set(f.id, f);
+    }
+    const mergedFiles = Array.from(uniqueFilesMap.values()).sort(
+      (a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)
+    );
+
+    // Merge feedback
+    const feedbackMap = new Map();
+    for (const fb of [...(serverData.feedback || []), ...(localData.feedback || [])]) {
+      if (fb && fb.id) feedbackMap.set(fb.id, fb);
+    }
+    const mergedFeedback = Array.from(feedbackMap.values()).sort(
+      (a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)
+    );
+
+    if (canonicalRootId && share.resourceType === "FOLDER") {
+      share.folderId = canonicalRootId;
+    }
+
+    return {
+      share,
+      folders: mergedFolders,
+      files: mergedFiles,
+      feedback: mergedFeedback,
+    };
+  }
+
+  function computeDatasetSignature(d) {
+    if (!d) return "";
+    const fSig = (d.files || [])
+      .map((f) => `${f.id}:${f.approvalStatus}:${f.url?.slice(0, 24)}`)
+      .join("|");
+    const fldSig = (d.folders || []).map((f) => f.id).join("|");
+    const fbSig = (d.feedback || []).length;
+    return `${fSig}__${fldSig}__${fbSig}`;
+  }
+
+  async function fetchMergedPortalState(trackView = false) {
+    const url = `/api/public/share/${encodeURIComponent(token)}${
+      trackView ? "?track=1" : ""
+    }`;
+    let status = 404;
+    let serverJson = null;
+
     try {
-      const url = `/api/public/share/${encodeURIComponent(token)}${
-        trackView ? "?track=1" : ""
-      }`;
       const res = await fetch(url, {
         headers: enteredPassword ? { "x-share-password": enteredPassword } : {},
       });
-      let status = res.status;
-      let data = await res.json();
+      status = res.status;
+      serverJson = await res.json();
+    } catch {
+      status = 0;
+    }
 
-      if (!res.ok && status === 404) {
-        const localFallback = loadLocalCachePortal();
-        if (localFallback) {
-          status = localFallback.status;
-          data = localFallback.data;
-        }
-      }
+    const localResolved = resolveLocalCachePortal(
+      status >= 200 && status < 300 ? serverJson?.share : null
+    );
+
+    if (status === 401 && serverJson?.requiresPassword) {
+      return { status: 401, data: serverJson };
+    }
+    if (status >= 200 && status < 300 && serverJson) {
+      const merged = mergePortalDatasets(
+        serverJson,
+        localResolved?.status === 200 ? localResolved.data : null
+      );
+      return { status: 200, data: merged };
+    }
+    if (localResolved) {
+      return localResolved;
+    }
+    return {
+      status: status || 404,
+      data: serverJson || { error: "Unable to load shared deliverable." },
+    };
+  }
+
+  async function loadPortal(trackView = false) {
+    try {
+      const { status, data } = await fetchMergedPortalState(trackView);
 
       if (status === 401 && data.requiresPassword) {
         passwordPromptInfo = data;
@@ -129,6 +337,55 @@ export function createClientPortalController({ rootEl, token, onNavigateDashboar
     }
   }
 
+  async function pollLiveFolderUpdates(notifyOnNewFiles = true) {
+    if (isDestroyed || passwordPromptInfo || errorMessage || !portalData) return;
+    // Avoid disrupting active typing in the review comment box
+    const activeTag = document.activeElement?.tagName;
+    if (activeTag === "INPUT" || activeTag === "TEXTAREA") return;
+
+    try {
+      const prevCount = portalData.files?.length || 0;
+      const prevSig = computeDatasetSignature(portalData);
+      const { status, data } = await fetchMergedPortalState(false);
+      if (status === 200 && data) {
+        const nextSig = computeDatasetSignature(data);
+        if (nextSig !== prevSig) {
+          const nextCount = data.files?.length || 0;
+          portalData = data;
+          if (
+            currentSubfolderId === null &&
+            data.share.resourceType === "FOLDER" &&
+            data.share.folderId
+          ) {
+            currentSubfolderId = data.share.folderId;
+          }
+          if (activeFileModal) {
+            activeFileModal =
+              data.files.find((f) => f.id === activeFileModal.id) || activeFileModal;
+          }
+          render();
+          if (notifyOnNewFiles && nextCount > prevCount) {
+            const diff = nextCount - prevCount;
+            showToast(
+              diff === 1
+                ? "1 new deliverable synced to folder"
+                : `${diff} new deliverables synced to folder`,
+              "info"
+            );
+          }
+        }
+      }
+    } catch {
+      // silent background poll
+    }
+  }
+
+  function handleStorageSync(e) {
+    if (e.key === "appex_workspace_cache_v1") {
+      pollLiveFolderUpdates(true);
+    }
+  }
+
   async function submitClientFeedback(fileId, status, commentText) {
     try {
       const res = await fetch(
@@ -144,21 +401,59 @@ export function createClientPortalController({ rootEl, token, onNavigateDashboar
           }),
         }
       );
-      const data = await res.json();
-      if (!res.ok) {
-        showToast(data.error || "Could not submit review", "error");
-        return;
+      let updatedFile = null;
+      let createdFeedback = null;
+      if (res.ok) {
+        const data = await res.json();
+        updatedFile = data.file;
+        createdFeedback = data.feedback;
+      } else {
+        createdFeedback = {
+          id: `fb-${Math.random().toString(36).slice(2, 9)}`,
+          shareId: portalData?.share?.id || token,
+          fileId,
+          clientName: clientReviewerName,
+          status,
+          comment: commentText,
+          createdAt: new Date().toISOString(),
+        };
       }
 
-      // Update local state
+      // Update local state & localStorage workspace cache so studio view sees it immediately
       const fileIdx = portalData.files.findIndex((f) => f.id === fileId);
-      if (fileIdx !== -1 && data.file) {
-        portalData.files[fileIdx] = data.file;
+      if (fileIdx !== -1) {
+        if (updatedFile) {
+          portalData.files[fileIdx] = updatedFile;
+        } else if (status === "APPROVED" || status === "CHANGES_REQUESTED") {
+          portalData.files[fileIdx].approvalStatus = status;
+        }
         if (activeFileModal && activeFileModal.id === fileId) {
-          activeFileModal = data.file;
+          activeFileModal = portalData.files[fileIdx];
         }
       }
-      portalData.feedback.unshift(data.feedback);
+      if (createdFeedback) {
+        portalData.feedback.unshift(createdFeedback);
+      }
+
+      try {
+        const raw = localStorage.getItem("appex_workspace_cache_v1");
+        if (raw) {
+          const ws = JSON.parse(raw);
+          if (Array.isArray(ws.files)) {
+            const idx = ws.files.findIndex((f) => f.id === fileId);
+            if (idx !== -1 && (status === "APPROVED" || status === "CHANGES_REQUESTED")) {
+              ws.files[idx].approvalStatus = status;
+            }
+          }
+          if (createdFeedback && Array.isArray(ws.feedback)) {
+            ws.feedback.unshift(createdFeedback);
+          }
+          localStorage.setItem("appex_workspace_cache_v1", JSON.stringify(ws));
+        }
+      } catch {
+        // ignore storage error
+      }
+
       showToast(
         status === "APPROVED"
           ? "Deliverable marked as Approved"
@@ -197,6 +492,26 @@ export function createClientPortalController({ rootEl, token, onNavigateDashboar
     render();
   }
 
+  async function triggerDownloadAllFiles(filesToDownload) {
+    if (!portalData?.share?.allowDownload) {
+      showToast("Downloads are disabled on this view-only portal", "error");
+      return;
+    }
+    if (!filesToDownload || filesToDownload.length === 0) return;
+    showToast(`Starting download of ${filesToDownload.length} deliverables…`, "success");
+    for (let i = 0; i < filesToDownload.length; i++) {
+      const f = filesToDownload[i];
+      const a = document.createElement("a");
+      a.href = f.url;
+      a.download = f.name;
+      a.target = "_blank";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      await new Promise((r) => setTimeout(r, 250));
+    }
+  }
+
   function render() {
     if (cleanupVideoCanvas) {
       cleanupVideoCanvas();
@@ -221,7 +536,9 @@ export function createClientPortalController({ rootEl, token, onNavigateDashboar
         </div>
       `;
       if (window.lucide) window.lucide.createIcons();
-      document.getElementById("portal-back-studio")?.addEventListener("click", onNavigateDashboard);
+      document
+        .getElementById("portal-back-studio")
+        ?.addEventListener("click", navigateBackToStudio);
       return;
     }
 
@@ -295,7 +612,11 @@ export function createClientPortalController({ rootEl, token, onNavigateDashboar
 
     let visibleFiles =
       share.resourceType === "FOLDER"
-        ? files.filter((f) => f.folderId === currentSubfolderId)
+        ? files.filter(
+            (f) =>
+              f.folderId === currentSubfolderId ||
+              (currentSubfolderId === share.folderId && !f.folderId)
+          )
         : files;
 
     if (activeCategoryFilter !== "ALL") {
@@ -312,7 +633,9 @@ export function createClientPortalController({ rootEl, token, onNavigateDashboar
     const breadcrumbs = [];
     if (share.resourceType === "FOLDER" && share.folderId) {
       let ptr = folders.find((f) => f.id === currentSubfolderId);
-      while (ptr) {
+      const visited = new Set();
+      while (ptr && !visited.has(ptr.id)) {
+        visited.add(ptr.id);
         breadcrumbs.unshift(ptr);
         if (ptr.id === share.folderId) break;
         ptr = folders.find((f) => f.id === ptr.parentId);
@@ -336,7 +659,7 @@ export function createClientPortalController({ rootEl, token, onNavigateDashboar
               <div>
                 <div class="flex items-center gap-2">
                   <span class="text-xs font-mono-code uppercase tracking-widest text-slate-400">${escapeHtml(
-                    share.studioName
+                    share.studioName || "Appex Studios"
                   )}</span>
                   <span class="text-slate-600">•</span>
                   <span class="text-xs text-slate-400">Client Review Portal</span>
@@ -347,7 +670,23 @@ export function createClientPortalController({ rootEl, token, onNavigateDashboar
               </div>
             </div>
 
-            <div class="flex items-center gap-3">
+            <div class="flex flex-wrap items-center gap-2.5">
+              ${
+                share.resourceType === "FOLDER"
+                  ? `<span class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-mono-code bg-emerald-500/10 text-emerald-300 border border-emerald-500/20" title="New files uploaded to this folder appear automatically">
+                      <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                      Live Folder Sync
+                    </span>`
+                  : ""
+              }
+              <button
+                id="client-refresh-portal"
+                class="glass-button px-3 py-1.5 rounded-lg text-xs font-medium text-slate-300 inline-flex items-center gap-1.5 hover:text-white"
+                title="Sync latest studio uploads"
+              >
+                <i data-lucide="refresh-cw" class="w-3.5 h-3.5 text-slate-400"></i>
+                <span>Sync</span>
+              </button>
               ${
                 share.allowDownload
                   ? `<span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
@@ -383,7 +722,7 @@ export function createClientPortalController({ rootEl, token, onNavigateDashboar
                   }</span>
                   <span>•</span>
                   <span>Prepared by <strong class="text-slate-200 font-medium">${escapeHtml(
-                    share.ownerName
+                    share.ownerName || "Studio Director"
                   )}</strong></span>
                   ${
                     share.expiresAt
@@ -399,11 +738,11 @@ export function createClientPortalController({ rootEl, token, onNavigateDashboar
                     ? `<p class="text-sm text-slate-300/90 leading-relaxed">${escapeHtml(
                         share.description
                       )}</p>`
-                    : ""
+                    : `<p class="text-xs text-slate-400">Live studio delivery portal — inspect files, leave review notes, or download approved assets.</p>`
                 }
               </div>
 
-              <!-- Deliverable Metrics -->
+              <!-- Deliverable Metrics & Download All -->
               <div class="flex flex-wrap items-center gap-3 shrink-0">
                 <div class="glass-card px-4 py-3 rounded-xl min-w-[110px]">
                   <div class="text-[11px] text-slate-400">Deliverables</div>
@@ -423,6 +762,17 @@ export function createClientPortalController({ rootEl, token, onNavigateDashboar
       files.length
     }</div>
                 </div>
+                ${
+                  share.allowDownload && files.length > 1
+                    ? `<button
+                        id="client-download-all-btn"
+                        class="btn-studio-primary px-4 py-3 rounded-xl text-xs font-semibold inline-flex items-center gap-2 shadow-lg"
+                      >
+                        <i data-lucide="download-cloud" class="w-4 h-4"></i>
+                        <span>Download All (${files.length})</span>
+                      </button>`
+                    : ""
+                }
               </div>
             </div>
           </div>
@@ -438,18 +788,19 @@ export function createClientPortalController({ rootEl, token, onNavigateDashboar
                     ${idx > 0 ? `<span class="text-slate-600">/</span>` : ""}
                     <button
                       data-portal-folder="${escapeHtml(b.id)}"
-                      class="px-2.5 py-1 rounded-lg transition ${
+                      class="px-2.5 py-1 rounded-lg transition inline-flex items-center gap-1.5 ${
                         b.id === currentSubfolderId && activeCategoryFilter === "ALL"
                           ? "bg-white/10 text-white font-medium border border-white/15"
                           : "text-slate-400 hover:text-white hover:bg-white/5"
                       }"
                     >
+                      <i data-lucide="folder" class="w-3.5 h-3.5 text-amber-400"></i>
                       ${escapeHtml(b.name)}
                     </button>
                   `
                       )
                       .join("")
-                  : `<span class="text-xs font-mono-code uppercase tracking-wider text-slate-400">Deliverable Files</span>`
+                  : `<span class="text-xs font-mono-code uppercase tracking-wider text-slate-400">Deliverable Files (${visibleFiles.length})</span>`
               }
             </div>
 
@@ -530,8 +881,24 @@ export function createClientPortalController({ rootEl, token, onNavigateDashboar
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
               ${
                 visibleFiles.length === 0
-                  ? `<div class="col-span-full glass-panel rounded-2xl p-12 text-center text-slate-400 text-sm">
-                      No deliverables match the current filter in this folder.
+                  ? `<div class="col-span-full glass-panel rounded-2xl p-12 text-center space-y-3">
+                      <div class="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center mx-auto text-amber-300">
+                        <i data-lucide="folder-sync" class="w-6 h-6"></i>
+                      </div>
+                      <div class="text-base font-medium text-white">
+                        ${
+                          files.length === 0
+                            ? "Live Shared Folder Ready"
+                            : "No deliverables match the selected filter"
+                        }
+                      </div>
+                      <p class="text-xs text-slate-400 max-w-md mx-auto leading-relaxed">
+                        ${
+                          files.length === 0
+                            ? "This folder link is active and connected to the studio workspace. Any new files or subfolders uploaded into this folder will appear here automatically in real time."
+                            : "Switch the filter bar above back to All Items to view all deliverables in this folder."
+                        }
+                      </p>
                     </div>`
                   : visibleFiles
                       .map((file) => {
@@ -552,7 +919,7 @@ export function createClientPortalController({ rootEl, token, onNavigateDashboar
                                     )}" class="w-full h-full object-cover group-hover:scale-[1.02] transition duration-300" />`
                                   : file.category === "VIDEO"
                                   ? `<div class="w-full h-full relative flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-950 to-black">
-                                      <img src="/sample-media/oslo-pavilion.svg" alt="" class="w-full h-full object-cover opacity-55 group-hover:scale-[1.02] transition duration-300" />
+                                      <video src="${escapeHtml(file.url)}" muted preload="metadata" class="w-full h-full object-cover opacity-75 group-hover:scale-[1.02] transition duration-300"></video>
                                       <div class="absolute inset-0 flex items-center justify-center">
                                         <div class="w-12 h-12 rounded-full bg-white/15 backdrop-blur-md border border-white/30 flex items-center justify-center text-white group-hover:scale-105 transition">
                                           <i data-lucide="play" class="w-5 h-5 fill-current ml-0.5"></i>
@@ -564,7 +931,7 @@ export function createClientPortalController({ rootEl, token, onNavigateDashboar
                                         <i data-lucide="file-text" class="w-6 h-6"></i>
                                       </div>
                                       <span class="text-[11px] font-mono-code text-slate-400">${escapeHtml(
-                                        file.metaLabel || "PDF Document"
+                                        file.metaLabel || "Document"
                                       )}</span>
                                     </div>`
                               }
@@ -642,6 +1009,17 @@ export function createClientPortalController({ rootEl, token, onNavigateDashboar
             </div>
           </div>
         </main>
+
+        <!-- Client Portal Footer -->
+        <footer class="px-6 py-4 border-t border-white/[0.06] text-center text-xs text-slate-400">
+          <span>Powered by <strong class="text-slate-200">Appex Studios</strong> • From </span>
+          <a
+            href="https://appexproductions.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="text-amber-300 hover:text-amber-200 underline underline-offset-4 transition font-medium"
+          >Appex Productions</a>
+        </footer>
       </div>
 
       ${activeFileModal ? renderClientFileModal(activeFileModal, share, feedback, clientReviewerName) : ""}
@@ -653,7 +1031,20 @@ export function createClientPortalController({ rootEl, token, onNavigateDashboar
     // Bind events
     document
       .getElementById("client-switch-studio")
-      ?.addEventListener("click", onNavigateDashboard);
+      ?.addEventListener("click", navigateBackToStudio);
+
+    document
+      .getElementById("client-refresh-portal")
+      ?.addEventListener("click", async () => {
+        await pollLiveFolderUpdates(false);
+        showToast("Synced latest deliverables from studio", "success");
+      });
+
+    document
+      .getElementById("client-download-all-btn")
+      ?.addEventListener("click", () => {
+        triggerDownloadAllFiles(visibleFiles.length > 0 ? visibleFiles : files);
+      });
 
     rootEl.querySelectorAll("[data-portal-folder]").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -748,6 +1139,11 @@ export function createClientPortalController({ rootEl, token, onNavigateDashboar
         });
     }
   }
+
+  window.addEventListener("storage", handleStorageSync);
+  liveSyncTimer = setInterval(() => {
+    pollLiveFolderUpdates(true);
+  }, 4000);
 
   loadPortal(true);
 }

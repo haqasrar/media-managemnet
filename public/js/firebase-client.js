@@ -260,14 +260,15 @@ function getDefaultMetaLabel(category, filename = "") {
  * Immediately creates a playable/viewable object in the workspace with zero loading wait,
  * and syncs to the backend / cloud storage in the background.
  */
-export async function uploadMediaFile(file, { folderId, ownerId }) {
+export async function uploadMediaFile(file, { folderId, ownerId, onSynced }) {
   const now = new Date().toISOString();
   const category = classifyFileCategory(file.type, file.name);
   const instantBlobUrl = URL.createObjectURL(file);
+  const fileId = `file-${Math.random().toString(36).slice(2, 11)}`;
 
   // Create immediate file item so UI updates with zero loading delay
   const instantFile = {
-    id: `file-${Math.random().toString(36).slice(2, 11)}`,
+    id: fileId,
     name: file.name,
     originalName: file.name,
     mimeType: file.type || "application/octet-stream",
@@ -286,11 +287,31 @@ export async function uploadMediaFile(file, { folderId, ownerId }) {
     updatedAt: now,
   };
 
-  // Sync to backend in the background without blocking UI
+  // Convert files under 8MB to persistent Data URL for cross-tab/serverless resilience
+  if (file.size && file.size < 8 * 1024 * 1024) {
+    try {
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (
+          typeof reader.result === "string" &&
+          instantFile.url.startsWith("blob:")
+        ) {
+          instantFile.url = reader.result;
+          if (onSynced) onSynced(instantFile);
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch {
+      // ignore
+    }
+  }
+
+  // Sync to backend in the background with matching x-file-id
   (async () => {
     try {
       const xhr = new XMLHttpRequest();
       xhr.open("POST", "/api/upload", true);
+      xhr.setRequestHeader("x-file-id", fileId);
       xhr.setRequestHeader("x-file-name", encodeURIComponent(file.name));
       xhr.setRequestHeader("x-file-type", file.type || "application/octet-stream");
       xhr.setRequestHeader("x-folder-id", folderId || "");
@@ -299,17 +320,18 @@ export async function uploadMediaFile(file, { folderId, ownerId }) {
         if (xhr.status >= 200 && xhr.status < 300) {
           try {
             const parsed = JSON.parse(xhr.responseText);
-            if (parsed?.file?.url && !parsed.file.url.startsWith("data:")) {
+            if (parsed?.file?.url) {
               instantFile.url = parsed.file.url;
+              if (onSynced) onSynced(instantFile);
             }
           } catch {
-            // keep instantBlobUrl
+            // keep current url
           }
         }
       };
       xhr.send(file);
     } catch {
-      // keep instantBlobUrl
+      // keep current url
     }
   })();
 

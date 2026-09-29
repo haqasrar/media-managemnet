@@ -8,7 +8,7 @@ import {
   signInWithFirebaseGoogle,
   signOutGoogleUser,
   uploadMediaFile,
-} from "./firebase-client.js";
+} from "./firebase-client.js?v=9";
 import {
   formatBytes,
   formatDateShort,
@@ -20,8 +20,8 @@ import {
   renderCategoryBadge,
   mountSampleCinemaCanvas,
   enhanceAppexLogos,
-} from "./ui-helpers.js";
-import { createClientPortalController } from "./client-portal.js";
+} from "./ui-helpers.js?v=9";
+import { createClientPortalController } from "./client-portal.js?v=9";
 
 const rootEl = document.getElementById("app-root");
 const globalFileInput = document.getElementById("global-file-input");
@@ -40,13 +40,34 @@ function loadWorkspaceCache() {
   }
 }
 
+let syncTimer = null;
+
+function syncWorkspaceToServer() {
+  if (syncTimer) clearTimeout(syncTimer);
+  syncTimer = setTimeout(() => {
+    const syncableFiles = state.files.map((f) => ({
+      ...f,
+      // Send non-blob URLs or metadata to server
+      url: f.url && !f.url.startsWith("blob:") ? f.url : f.url,
+    }));
+    fetch("/api/sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        folders: state.folders,
+        files: syncableFiles,
+        shares: state.shares,
+        feedback: state.feedback,
+      }),
+    }).catch(() => {});
+  }, 120);
+}
+
 function saveWorkspaceCache() {
   try {
-    // Store metadata in localStorage so folders/files/shares persist instantaneously
     const serializableFiles = state.files.map((f) => ({
       ...f,
-      // Keep non-oversized URLs in localStorage
-      url: f.url && f.url.length > 250000 ? f.url : f.url,
+      url: f.url && f.url.length > 450000 ? f.url.slice(0, 450000) === f.url ? f.url : f.url : f.url,
     }));
     localStorage.setItem(
       WORKSPACE_CACHE_KEY,
@@ -58,8 +79,26 @@ function saveWorkspaceCache() {
       })
     );
   } catch {
-    // ignore quota errors for large base64 items
+    // If localStorage hits 5MB quota on large base64 data URLs, store lightweight file list
+    try {
+      const compactFiles = state.files.map((f) => ({
+        ...f,
+        url: f.url && f.url.startsWith("data:") && f.url.length > 150000 ? f.url : f.url,
+      }));
+      localStorage.setItem(
+        WORKSPACE_CACHE_KEY,
+        JSON.stringify({
+          folders: state.folders,
+          files: compactFiles,
+          shares: state.shares,
+          feedback: state.feedback,
+        })
+      );
+    } catch {
+      // ignore
+    }
   }
+  syncWorkspaceToServer();
 }
 
 function mergeById(localArr = [], remoteArr = []) {
@@ -68,8 +107,17 @@ function mergeById(localArr = [], remoteArr = []) {
     if (item && item.id) map.set(item.id, item);
   }
   for (const item of localArr) {
-    if (item && item.id && !map.has(item.id)) {
+    if (!item || !item.id) continue;
+    if (!map.has(item.id)) {
       map.set(item.id, item);
+    } else {
+      const rem = map.get(item.id);
+      // Prefer non-blob URL
+      const bestUrl =
+        rem.url && !rem.url.startsWith("blob:")
+          ? rem.url
+          : item.url || rem.url;
+      map.set(item.id, { ...rem, ...item, url: bestUrl });
     }
   }
   return Array.from(map.values());
@@ -152,7 +200,16 @@ window.addEventListener("popstate", () => handleRoute());
 
 async function fetchWorkspaceData() {
   try {
-    const res = await fetch("/api/workspace");
+    const res = await fetch("/api/sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        folders: state.folders,
+        files: state.files,
+        shares: state.shares,
+        feedback: state.feedback,
+      }),
+    });
     if (res.ok) {
       const data = await res.json();
       state.folders = mergeById(state.folders, data.folders || []);
@@ -162,7 +219,7 @@ async function fetchWorkspaceData() {
       saveWorkspaceCache();
     }
   } catch (err) {
-    console.error("Workspace load error:", err);
+    console.error("Workspace sync notice:", err);
   }
 }
 
@@ -902,7 +959,60 @@ function renderDashboard() {
 // EXPLORER SECTIONS (FOLDERS + MEDIA FILES + CLIENT SHARES)
 // ============================================================================
 function renderMediaExplorerSection(visibleFolders, visibleFiles) {
+  const currentFolder = state.currentFolderId
+    ? state.folders.find((f) => f.id === state.currentFolderId)
+    : null;
+  const activeFolderShare = currentFolder
+    ? state.shares.find(
+        (s) =>
+          s.isActive !== false &&
+          s.resourceType === "FOLDER" &&
+          (s.folderId === currentFolder.id || s.resourceName === currentFolder.name)
+      )
+    : null;
+
   return `
+    ${
+      activeFolderShare
+        ? `<div class="glass-panel rounded-2xl p-4 border border-emerald-500/30 bg-emerald-500/[0.05] flex flex-wrap items-center justify-between gap-4">
+            <div class="flex items-center gap-3 min-w-0">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
+              <div class="min-w-0">
+                <div class="text-xs font-semibold text-emerald-300 flex items-center gap-2">
+                  <span>Live Client Folder Share Active</span>
+                  <span class="font-mono-code text-[10px] px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/30">/share/${escapeHtml(
+                    activeFolderShare.token
+                  )}</span>
+                </div>
+                <div class="text-[11px] text-slate-300 mt-0.5">
+                  Any new images, videos, or documents uploaded into <strong>${escapeHtml(
+                    currentFolder.name
+                  )}</strong> automatically appear on the client side in real time.
+                </div>
+              </div>
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+              <button
+                data-copy-share-url="${escapeHtml(
+                  `${window.location.origin}/share/${activeFolderShare.token}`
+                )}"
+                class="glass-button px-3 py-1.5 rounded-lg text-xs font-medium text-white inline-flex items-center gap-1.5"
+              >
+                <i data-lucide="copy" class="w-3.5 h-3.5 text-emerald-400"></i>
+                <span>Copy Client Link</span>
+              </button>
+              <button
+                data-open-share-portal="${escapeHtml(activeFolderShare.token)}"
+                class="btn-studio-primary px-3 py-1.5 rounded-lg text-xs inline-flex items-center gap-1.5"
+              >
+                <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
+                <span>Open Client View</span>
+              </button>
+            </div>
+          </div>`
+        : ""
+    }
+
     <!-- Quick Drag & Drop Studio Bar -->
     <div
       id="inline-upload-dropzone"
@@ -913,9 +1023,11 @@ function renderMediaExplorerSection(visibleFolders, visibleFiles) {
           <i data-lucide="upload-cloud" class="w-5 h-5"></i>
         </div>
         <div>
-          <div class="text-sm font-medium text-white">Drop images, videos, or documents here to upload</div>
+          <div class="text-sm font-medium text-white">Drop images, videos, or documents here to upload${
+            currentFolder ? ` into "${escapeHtml(currentFolder.name)}"` : ""
+          }</div>
           <div class="text-xs text-slate-400">
-            Supports RAW/SVG/PNG/JPG stills, MP4/MOV video streams, and PDF/Office project documents • Share any folder or file via Client Link
+            Supports RAW/SVG/PNG/JPG stills, MP4/MOV video streams, and PDF/Office project documents • Instant live sync to shared client links
           </div>
         </div>
       </div>
@@ -933,7 +1045,7 @@ function renderMediaExplorerSection(visibleFolders, visibleFiles) {
           <h2 class="text-xs font-mono-code uppercase tracking-wider text-slate-400">
             Folders (${visibleFolders.length})
           </h2>
-          <span class="text-[11px] text-slate-500">Click a folder to open • Click Share icon to send folder link to client</span>
+          <span class="text-[11px] text-slate-500">Click a folder to open • Upload files inside to auto-update shared client links</span>
         </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -947,6 +1059,12 @@ function renderMediaExplorerSection(visibleFolders, visibleFiles) {
               const folderBytes = state.files
                 .filter((f) => !f.isTrashed && f.folderId === fld.id)
                 .reduce((a, b) => a + (Number(b.sizeBytes) || 0), 0);
+              const existingShare = state.shares.find(
+                (s) =>
+                  s.isActive !== false &&
+                  s.resourceType === "FOLDER" &&
+                  (s.folderId === fld.id || s.resourceName === fld.name)
+              );
 
               return `
                 <div
@@ -973,17 +1091,40 @@ function renderMediaExplorerSection(visibleFolders, visibleFiles) {
                         </div>
                       </div>
                     </div>
+                    ${
+                      existingShare
+                        ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono-code bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 shrink-0" title="Live Client Share Active">
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                            Shared
+                          </span>`
+                        : ""
+                    }
                   </div>
 
-                  <div class="pt-2.5 border-t border-white/[0.06] flex items-center justify-between">
-                    <button
-                      data-share-folder="${escapeHtml(fld.id)}"
-                      class="glass-button px-2.5 py-1 rounded-md text-[11px] font-medium text-slate-200 hover:text-amber-300 inline-flex items-center gap-1.5"
-                      title="Create Client Share Link for this Folder"
-                    >
-                      <i data-lucide="share-2" class="w-3 h-3 text-amber-400"></i>
-                      <span>Share Folder Link</span>
-                    </button>
+                  <div class="pt-2.5 border-t border-white/[0.06] flex items-center justify-between gap-1">
+                    <div class="flex items-center gap-1.5">
+                      <button
+                        data-share-folder="${escapeHtml(fld.id)}"
+                        class="glass-button px-2.5 py-1 rounded-md text-[11px] font-medium text-slate-200 hover:text-amber-300 inline-flex items-center gap-1.5"
+                        title="Create or Manage Client Share Link for this Folder"
+                      >
+                        <i data-lucide="share-2" class="w-3 h-3 text-amber-400"></i>
+                        <span>${existingShare ? "Share Settings" : "Share Folder"}</span>
+                      </button>
+                      ${
+                        existingShare
+                          ? `<button
+                              data-copy-folder-share="${escapeHtml(
+                                `${window.location.origin}/share/${existingShare.token}`
+                              )}"
+                              class="glass-button p-1.5 rounded-md text-emerald-300 hover:text-white"
+                              title="Copy Active Client Share Link"
+                            >
+                              <i data-lucide="copy" class="w-3 h-3"></i>
+                            </button>`
+                          : ""
+                      }
+                    </div>
 
                     <div class="flex items-center gap-1">
                       <button
@@ -2231,6 +2372,8 @@ function bindDashboardEvents() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          id: optimisticShare.id,
+          token: optimisticShare.token,
           title,
           description,
           resourceType,
@@ -2260,7 +2403,7 @@ function bindDashboardEvents() {
     }
 
     saveWorkspaceCache();
-    showToast("Client Share Link generated", "success");
+    showToast("Client Share Link generated & synced", "success");
     renderDashboard();
   });
 
@@ -2279,6 +2422,18 @@ function bindDashboardEvents() {
       state.createdShareResult = null;
       navigateTo(`/share/${tok}`);
     }
+  });
+
+  // Quick Copy Share URL on Folder Cards & Active Share Banner
+  rootEl.querySelectorAll("[data-copy-folder-share]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const url = btn.getAttribute("data-copy-folder-share");
+      if (url) {
+        navigator.clipboard.writeText(url);
+        showToast("Client folder share link copied to clipboard", "success");
+      }
+    });
   });
 
   // Shares Management Tab Actions
@@ -2309,6 +2464,25 @@ function bindDashboardEvents() {
   });
 }
 
+function isFolderInsideSharedHierarchy(folderId) {
+  if (!folderId) return false;
+  const activeFolderShareIds = new Set(
+    state.shares
+      .filter((s) => s.resourceType === "FOLDER" && s.isActive !== false && s.folderId)
+      .map((s) => s.folderId)
+  );
+  if (activeFolderShareIds.size === 0) return false;
+  let ptrId = folderId;
+  const visited = new Set();
+  while (ptrId && !visited.has(ptrId)) {
+    if (activeFolderShareIds.has(ptrId)) return true;
+    visited.add(ptrId);
+    const fld = state.folders.find((f) => f.id === ptrId);
+    ptrId = fld ? fld.parentId : null;
+  }
+  return false;
+}
+
 // ============================================================================
 // INSTANT ZERO-WAIT FILE & FOLDER UPLOAD HANDLERS
 // ============================================================================
@@ -2321,6 +2495,9 @@ async function handleFilesBatchUpload(fileList) {
     const instantItem = await uploadMediaFile(file, {
       folderId: state.currentFolderId,
       ownerId: state.user?.uid || "default",
+      onSynced: () => {
+        saveWorkspaceCache();
+      },
     });
     state.files.unshift(instantItem);
     addedFiles.push(instantItem);
@@ -2328,10 +2505,13 @@ async function handleFilesBatchUpload(fileList) {
 
   saveWorkspaceCache();
   renderDashboard();
-  showToast(
+  const isShared = isFolderInsideSharedHierarchy(state.currentFolderId);
+  const baseMsg =
     addedFiles.length === 1
       ? `Added ${addedFiles[0].name}`
-      : `Added ${addedFiles.length} files`,
+      : `Added ${addedFiles.length} files`;
+  showToast(
+    isShared ? `${baseMsg} • Synced live to Client Portal` : baseMsg,
     "success"
   );
 }
@@ -2389,6 +2569,9 @@ async function handleFolderBatchUpload(fileList) {
     const instantItem = await uploadMediaFile(file, {
       folderId: targetFolderId,
       ownerId: state.user?.uid || "default",
+      onSynced: () => {
+        saveWorkspaceCache();
+      },
     });
     state.files.unshift(instantItem);
   }
@@ -2397,7 +2580,13 @@ async function handleFolderBatchUpload(fileList) {
   renderDashboard();
   const rootFolderName =
     (fileList[0]?.webkitRelativePath || "").split("/")[0] || "Folder";
-  showToast(`Added folder "${rootFolderName}" (${fileList.length} files)`, "success");
+  const isShared = isFolderInsideSharedHierarchy(state.currentFolderId);
+  showToast(
+    isShared
+      ? `Added folder "${rootFolderName}" (${fileList.length} files) • Synced live to Client Portal`
+      : `Added folder "${rootFolderName}" (${fileList.length} files)`,
+    "success"
+  );
 }
 
 globalFileInput?.addEventListener("change", async (e) => {

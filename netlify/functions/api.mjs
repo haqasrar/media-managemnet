@@ -158,23 +158,72 @@ export async function handler(event) {
     });
   }
 
+  // 2b. /api/sync
+  if (pathname === "/api/sync" && method === "POST") {
+    const body = parseBody(event);
+    const db = readDb();
+
+    const mergeCollection = (targetArr, incomingArr = []) => {
+      const map = new Map();
+      for (const item of targetArr) {
+        if (item && item.id) map.set(item.id, item);
+      }
+      for (const inc of incomingArr) {
+        if (!inc || !inc.id) continue;
+        const existing = map.get(inc.id);
+        if (!existing) {
+          targetArr.unshift(inc);
+          map.set(inc.id, inc);
+        } else {
+          const keepUrl =
+            existing.url && !existing.url.startsWith("blob:")
+              ? existing.url
+              : inc.url || existing.url;
+          Object.assign(existing, inc, { url: keepUrl });
+        }
+      }
+    };
+
+    mergeCollection(db.folders, body.folders);
+    mergeCollection(db.files, body.files);
+    mergeCollection(db.shares, body.shares);
+    mergeCollection(db.feedback, body.feedback);
+    writeDb(db);
+
+    return jsonResponse(200, {
+      folders: db.folders,
+      files: db.files,
+      shares: db.shares.map((s) => ({
+        ...s,
+        hasPassword: Boolean(s.password),
+      })),
+      feedback: db.feedback,
+    });
+  }
+
   // 3. /api/folders
   if (pathname === "/api/folders" && method === "POST") {
     const body = parseBody(event);
     const db = readDb();
     const now = new Date().toISOString();
+    const folderId = body.id || `fld-${crypto.randomBytes(5).toString("hex")}`;
+    const existingIdx = db.folders.findIndex((f) => f.id === folderId);
     const newFolder = {
-      id: `fld-${crypto.randomBytes(5).toString("hex")}`,
+      id: folderId,
       name: (body.name || "Untitled Folder").trim(),
       parentId: body.parentId || null,
       color: body.color || "amber",
       ownerId: body.ownerId || "default",
-      isStarred: false,
-      isTrashed: false,
-      createdAt: now,
+      isStarred: Boolean(body.isStarred),
+      isTrashed: Boolean(body.isTrashed),
+      createdAt: body.createdAt || now,
       updatedAt: now,
     };
-    db.folders.unshift(newFolder);
+    if (existingIdx !== -1) {
+      db.folders[existingIdx] = newFolder;
+    } else {
+      db.folders.unshift(newFolder);
+    }
     writeDb(db);
     return jsonResponse(201, { folder: newFolder });
   }
@@ -204,6 +253,7 @@ export async function handler(event) {
 
   // 4. /api/upload
   if (pathname === "/api/upload" && method === "POST") {
+    const providedFileId = headers["x-file-id"] || "";
     const rawName = decodeURIComponent(headers["x-file-name"] || "upload.bin");
     const mimeType = headers["x-file-type"] || "application/octet-stream";
     const folderId = headers["x-folder-id"] || null;
@@ -219,9 +269,11 @@ export async function handler(event) {
     const dataUrl = `data:${mimeType};base64,${buffer.toString("base64")}`;
     const category = classifyMimeType(mimeType, rawName);
     const now = new Date().toISOString();
+    const finalFileId =
+      providedFileId || `file-${crypto.randomBytes(5).toString("hex")}`;
 
     const newFile = {
-      id: `file-${crypto.randomBytes(5).toString("hex")}`,
+      id: finalFileId,
       name: rawName,
       originalName: rawName,
       mimeType,
@@ -241,7 +293,12 @@ export async function handler(event) {
     };
 
     const db = readDb();
-    db.files.unshift(newFile);
+    const existingIdx = db.files.findIndex((f) => f.id === finalFileId);
+    if (existingIdx !== -1) {
+      db.files[existingIdx] = newFile;
+    } else {
+      db.files.unshift(newFile);
+    }
     writeDb(db);
     return jsonResponse(201, { file: newFile });
   }
@@ -252,8 +309,10 @@ export async function handler(event) {
     const db = readDb();
     const now = new Date().toISOString();
     const category = classifyMimeType(body.mimeType, body.name);
+    const finalFileId =
+      body.id || `file-${crypto.randomBytes(5).toString("hex")}`;
     const newFile = {
-      id: `file-${crypto.randomBytes(5).toString("hex")}`,
+      id: finalFileId,
       name: body.name,
       originalName: body.name,
       mimeType: body.mimeType || "application/octet-stream",
@@ -265,13 +324,18 @@ export async function handler(event) {
       folderId: body.folderId || null,
       ownerId: body.ownerId || "default",
       metaLabel: body.metaLabel || getDefaultMetaLabel(category, body.mimeType, body.name),
-      approvalStatus: "PENDING",
-      isStarred: false,
-      isTrashed: false,
-      createdAt: now,
+      approvalStatus: body.approvalStatus || "PENDING",
+      isStarred: Boolean(body.isStarred),
+      isTrashed: Boolean(body.isTrashed),
+      createdAt: body.createdAt || now,
       updatedAt: now,
     };
-    db.files.unshift(newFile);
+    const existingIdx = db.files.findIndex((f) => f.id === finalFileId);
+    if (existingIdx !== -1) {
+      db.files[existingIdx] = newFile;
+    } else {
+      db.files.unshift(newFile);
+    }
     writeDb(db);
     return jsonResponse(201, { file: newFile });
   }
@@ -309,17 +373,18 @@ export async function handler(event) {
       .replace(/^-|-$/g, "")
       .slice(0, 24);
     const shortHash = crypto.randomBytes(3).toString("hex");
-    const token = `${slugBase}-${shortHash}`;
+    const token = body.token || `${slugBase}-${shortHash}`;
 
-    let expiresAt = null;
-    if (body.expiresInDays && Number(body.expiresInDays) > 0) {
+    let expiresAt = body.expiresAt || null;
+    if (!expiresAt && body.expiresInDays && Number(body.expiresInDays) > 0) {
       expiresAt = new Date(
         now.getTime() + Number(body.expiresInDays) * 86400000
       ).toISOString();
     }
 
+    const shareId = body.id || `shr-${crypto.randomBytes(5).toString("hex")}`;
     const newShare = {
-      id: `shr-${crypto.randomBytes(5).toString("hex")}`,
+      id: shareId,
       token,
       title: (body.title || body.resourceName || "Client Delivery").trim(),
       description: (body.description || "").trim(),
@@ -340,7 +405,14 @@ export async function handler(event) {
       createdAt: now.toISOString(),
     };
 
-    db.shares.unshift(newShare);
+    const existingIdx = db.shares.findIndex(
+      (s) => s.id === shareId || s.token === token
+    );
+    if (existingIdx !== -1) {
+      db.shares[existingIdx] = newShare;
+    } else {
+      db.shares.unshift(newShare);
+    }
     writeDb(db);
 
     return jsonResponse(201, {
@@ -462,6 +534,14 @@ export async function handler(event) {
 
       if (share.resourceType === "FOLDER" && share.folderId) {
         const allowedFolderIds = getDescendantFolderIds(share.folderId, db.folders);
+        if (share.resourceName) {
+          for (const f of db.folders) {
+            if (!f.isTrashed && f.name === share.resourceName) {
+              const extraIds = getDescendantFolderIds(f.id, db.folders);
+              for (const eid of extraIds) allowedFolderIds.add(eid);
+            }
+          }
+        }
         sharedFolders = db.folders.filter(
           (f) => !f.isTrashed && allowedFolderIds.has(f.id)
         );
@@ -469,7 +549,12 @@ export async function handler(event) {
           (f) => !f.isTrashed && f.folderId && allowedFolderIds.has(f.folderId)
         );
       } else if (share.resourceType === "FILE" && share.fileId) {
-        sharedFiles = db.files.filter((f) => !f.isTrashed && f.id === share.fileId);
+        sharedFiles = db.files.filter(
+          (f) =>
+            !f.isTrashed &&
+            (f.id === share.fileId ||
+              (share.resourceName && f.name === share.resourceName))
+        );
       }
 
       const fileIds = new Set(sharedFiles.map((f) => f.id));

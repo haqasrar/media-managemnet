@@ -255,25 +255,102 @@ function getDefaultMetaLabel(category, filename = "") {
   return `${ext || "DOC"} • Project Document`;
 }
 
+function createSyncSafeDataUrl(file, category) {
+  return new Promise((resolve) => {
+    if (!file) return resolve(null);
+
+    // For raster images larger than 300KB, generate an optimized high-res WebP/JPEG data URL
+    // so multi-megabyte PNG batches fit inside localStorage & Netlify 6MB serverless payloads.
+    if (
+      category === "IMAGE" &&
+      !String(file.type || "").includes("svg") &&
+      file.size > 300 * 1024
+    ) {
+      const img = new Image();
+      const objUrl = URL.createObjectURL(file);
+      img.onload = () => {
+        try {
+          const maxDim = 1600;
+          let { width, height } = img;
+          if (width > maxDim || height > maxDim) {
+            if (width >= height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = width || 800;
+          canvas.height = height || 600;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          URL.revokeObjectURL(objUrl);
+          let compressed = canvas.toDataURL("image/webp", 0.84);
+          if (!compressed || compressed.length < 64) {
+            compressed = canvas.toDataURL("image/jpeg", 0.84);
+          }
+          resolve(compressed);
+        } catch {
+          URL.revokeObjectURL(objUrl);
+          resolve(null);
+        }
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(objUrl);
+        resolve(null);
+      };
+      img.src = objUrl;
+      return;
+    }
+
+    // For smaller files (< 3.5MB), read directly as Data URL
+    if (file.size && file.size < 3.5 * 1024 * 1024) {
+      try {
+        const reader = new FileReader();
+        reader.onload = () => {
+          resolve(typeof reader.result === "string" ? reader.result : null);
+        };
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(file);
+        return;
+      } catch {
+        resolve(null);
+        return;
+      }
+    }
+
+    resolve(null);
+  });
+}
+
 /**
- * Instant, non-blocking media file upload.
- * Immediately creates a playable/viewable object in the workspace with zero loading wait,
- * and syncs to the backend / cloud storage in the background.
+ * Instant, non-blocking media file upload with live per-file progress tracking.
+ * Immediately creates a playable/viewable object in the workspace with a 0% -> 100%
+ * progress line bar and syncs to the backend / cloud storage in the background.
  */
-export async function uploadMediaFile(file, { folderId, ownerId, onSynced }) {
+export async function uploadMediaFile(
+  file,
+  { folderId, ownerId, onProgress, onSynced } = {}
+) {
   const now = new Date().toISOString();
   const category = classifyFileCategory(file.type, file.name);
   const instantBlobUrl = URL.createObjectURL(file);
   const fileId = `file-${Math.random().toString(36).slice(2, 11)}`;
+  const totalBytes = Number(file.size) || 0;
 
-  // Create immediate file item so UI updates with zero loading delay
+  // Create immediate file item with live upload progress state
   const instantFile = {
     id: fileId,
     name: file.name,
     originalName: file.name,
     mimeType: file.type || "application/octet-stream",
     category,
-    sizeBytes: file.size || 0,
+    sizeBytes: totalBytes,
+    uploadedBytes: 0,
+    uploadProgress: 4,
+    uploadStatus: "uploading", // "uploading" | "complete" | "done"
     url: instantBlobUrl,
     storagePath: `uploads/${file.name}`,
     storageProvider: "cloud",
@@ -287,26 +364,56 @@ export async function uploadMediaFile(file, { folderId, ownerId, onSynced }) {
     updatedAt: now,
   };
 
-  // Convert files under 8MB to persistent Data URL for cross-tab/serverless resilience
-  if (file.size && file.size < 8 * 1024 * 1024) {
-    try {
-      const reader = new FileReader();
-      reader.onload = () => {
-        if (
-          typeof reader.result === "string" &&
-          instantFile.url.startsWith("blob:")
-        ) {
-          instantFile.url = reader.result;
-          if (onSynced) onSynced(instantFile);
-        }
-      };
-      reader.readAsDataURL(file);
-    } catch {
-      // ignore
-    }
-  }
+  let currentPct = 4;
+  let networkDone = false;
+  let finalized = false;
 
-  // Sync to backend in the background with matching x-file-id
+  const emitProgress = (pct) => {
+    const clamped = Math.max(currentPct, Math.min(100, Math.round(pct)));
+    currentPct = clamped;
+    instantFile.uploadProgress = clamped;
+    instantFile.uploadedBytes = Math.round((clamped / 100) * totalBytes);
+    if (onProgress) onProgress(instantFile);
+  };
+
+  // Smooth visual progress ticker so every file visibly animates its progress line
+  const smoothTimer = setInterval(() => {
+    if (finalized) {
+      clearInterval(smoothTimer);
+      return;
+    }
+    if (!networkDone) {
+      if (currentPct < 88) {
+        const step = currentPct < 45 ? 9 : currentPct < 75 ? 5 : 2;
+        emitProgress(currentPct + step);
+      }
+    } else if (currentPct < 100) {
+      emitProgress(Math.min(100, currentPct + 18));
+    } else {
+      finalized = true;
+      clearInterval(smoothTimer);
+      instantFile.uploadProgress = 100;
+      instantFile.uploadedBytes = totalBytes;
+      instantFile.uploadStatus = "complete";
+      if (onProgress) onProgress(instantFile);
+      if (onSynced) onSynced(instantFile);
+
+      setTimeout(() => {
+        instantFile.uploadStatus = "done";
+        if (onProgress) onProgress(instantFile);
+      }, 1800);
+    }
+  }, 65);
+
+  // Prepare sync-safe Data URL for serverless & cross-tab persistence
+  createSyncSafeDataUrl(file, category).then((safeDataUrl) => {
+    if (safeDataUrl && instantFile.url.startsWith("blob:")) {
+      instantFile.url = safeDataUrl;
+      if (onSynced) onSynced(instantFile);
+    }
+  });
+
+  // Sync to backend in the background with matching x-file-id & XHR upload progress
   (async () => {
     try {
       const xhr = new XMLHttpRequest();
@@ -316,22 +423,41 @@ export async function uploadMediaFile(file, { folderId, ownerId, onSynced }) {
       xhr.setRequestHeader("x-file-type", file.type || "application/octet-stream");
       xhr.setRequestHeader("x-folder-id", folderId || "");
       xhr.setRequestHeader("x-owner-id", ownerId || "default");
+
+      xhr.upload.onprogress = (evt) => {
+        if (evt.lengthComputable && evt.total > 0) {
+          const rawPct = Math.round((evt.loaded / evt.total) * 94);
+          if (rawPct > currentPct) {
+            emitProgress(rawPct);
+          }
+        }
+      };
+
       xhr.onload = () => {
         if (xhr.status >= 200 && xhr.status < 300) {
           try {
             const parsed = JSON.parse(xhr.responseText);
-            if (parsed?.file?.url) {
+            if (
+              parsed?.file?.url &&
+              (!parsed.file.url.startsWith("data:") ||
+                parsed.file.url.length < 600 * 1024)
+            ) {
               instantFile.url = parsed.file.url;
-              if (onSynced) onSynced(instantFile);
             }
           } catch {
             // keep current url
           }
         }
+        networkDone = true;
       };
+
+      xhr.onerror = () => {
+        networkDone = true;
+      };
+
       xhr.send(file);
     } catch {
-      // keep current url
+      networkDone = true;
     }
   })();
 

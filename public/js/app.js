@@ -8,7 +8,7 @@ import {
   signInWithFirebaseGoogle,
   signOutGoogleUser,
   uploadMediaFile,
-} from "./firebase-client.js?v=9";
+} from "./firebase-client.js?v=10";
 import {
   formatBytes,
   formatDateShort,
@@ -20,8 +20,8 @@ import {
   renderCategoryBadge,
   mountSampleCinemaCanvas,
   enhanceAppexLogos,
-} from "./ui-helpers.js?v=9";
-import { createClientPortalController } from "./client-portal.js?v=9";
+} from "./ui-helpers.js?v=10";
+import { createClientPortalController } from "./client-portal.js?v=10";
 
 const rootEl = document.getElementById("app-root");
 const globalFileInput = document.getElementById("global-file-input");
@@ -42,14 +42,19 @@ function loadWorkspaceCache() {
 
 let syncTimer = null;
 
+function toPersistedFileRecord(f, maxDataUrlLen = 600000) {
+  const { uploadProgress, uploadStatus, uploadedBytes, ...rest } = f;
+  let url = rest.url || "";
+  if (url.startsWith("data:") && url.length > maxDataUrlLen) {
+    url = "/sample-media/brand-stills.svg";
+  }
+  return { ...rest, url };
+}
+
 function syncWorkspaceToServer() {
   if (syncTimer) clearTimeout(syncTimer);
   syncTimer = setTimeout(() => {
-    const syncableFiles = state.files.map((f) => ({
-      ...f,
-      // Send non-blob URLs or metadata to server
-      url: f.url && !f.url.startsWith("blob:") ? f.url : f.url,
-    }));
+    const syncableFiles = state.files.map((f) => toPersistedFileRecord(f, 800000));
     fetch("/api/sync", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -65,10 +70,7 @@ function syncWorkspaceToServer() {
 
 function saveWorkspaceCache() {
   try {
-    const serializableFiles = state.files.map((f) => ({
-      ...f,
-      url: f.url && f.url.length > 450000 ? f.url.slice(0, 450000) === f.url ? f.url : f.url : f.url,
-    }));
+    const serializableFiles = state.files.map((f) => toPersistedFileRecord(f, 450000));
     localStorage.setItem(
       WORKSPACE_CACHE_KEY,
       JSON.stringify({
@@ -79,12 +81,9 @@ function saveWorkspaceCache() {
       })
     );
   } catch {
-    // If localStorage hits 5MB quota on large base64 data URLs, store lightweight file list
+    // If localStorage hits 5MB quota on large base64 data URLs, store compact records
     try {
-      const compactFiles = state.files.map((f) => ({
-        ...f,
-        url: f.url && f.url.startsWith("data:") && f.url.length > 150000 ? f.url : f.url,
-      }));
+      const compactFiles = state.files.map((f) => toPersistedFileRecord(f, 180000));
       localStorage.setItem(
         WORKSPACE_CACHE_KEY,
         JSON.stringify({
@@ -1036,6 +1035,9 @@ function renderMediaExplorerSection(visibleFolders, visibleFiles) {
       </span>
     </div>
 
+    <!-- Live Per-Media Upload Progress Queue Slot -->
+    <div id="active-upload-queue-slot">${renderActiveUploadQueueHTML()}</div>
+
     <!-- FOLDERS SECTION -->
     ${
       visibleFolders.length > 0
@@ -1185,12 +1187,123 @@ function renderMediaExplorerSection(visibleFolders, visibleFiles) {
   `;
 }
 
+function renderActiveUploadQueueHTML() {
+  const uploadingFiles = state.files.filter(
+    (f) =>
+      !f.isTrashed &&
+      (f.uploadStatus === "uploading" || f.uploadStatus === "complete")
+  );
+  if (uploadingFiles.length === 0) return "";
+
+  const totalPct = Math.round(
+    uploadingFiles.reduce((acc, f) => acc + (Number(f.uploadProgress) || 0), 0) /
+      uploadingFiles.length
+  );
+  const completedCount = uploadingFiles.filter(
+    (f) => (f.uploadProgress || 0) >= 100
+  ).length;
+  const allDone = completedCount === uploadingFiles.length;
+
+  return `
+    <div class="glass-panel rounded-2xl p-4 border ${
+      allDone ? "border-emerald-500/30 bg-emerald-500/[0.04]" : "border-amber-500/30 bg-amber-500/[0.04]"
+    } space-y-3.5">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <div class="flex items-center gap-2.5">
+          <span class="w-2.5 h-2.5 rounded-full ${
+            allDone ? "bg-emerald-400" : "bg-amber-400 animate-pulse"
+          }"></span>
+          <span class="text-xs font-semibold text-white">
+            ${
+              allDone
+                ? `Uploaded ${uploadingFiles.length} ${
+                    uploadingFiles.length === 1 ? "media deliverable" : "media deliverables"
+                  } (100%)`
+                : `Uploading ${uploadingFiles.length} ${
+                    uploadingFiles.length === 1 ? "media deliverable" : "media deliverables"
+                  } (${completedCount}/${uploadingFiles.length} complete)`
+            }
+          </span>
+        </div>
+        <span class="text-xs font-mono-code font-semibold ${
+          allDone ? "text-emerald-300" : "text-amber-300"
+        }">${totalPct}%</span>
+      </div>
+
+      <!-- Overall Batch Upload Progress Line -->
+      <div class="w-full h-1.5 rounded-full bg-slate-900/90 overflow-hidden border border-white/[0.06]">
+        <div
+          class="h-full rounded-full transition-all duration-150 ${
+            allDone
+              ? "bg-emerald-400"
+              : "bg-gradient-to-r from-amber-500 via-amber-400 to-emerald-400"
+          }"
+          style="width: ${totalPct}%"
+        ></div>
+      </div>
+
+      <!-- Individual Media File Progress Lines -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 max-h-48 overflow-y-auto pr-1">
+        ${uploadingFiles
+          .map((f) => {
+            const pct = Math.min(100, Math.max(0, Number(f.uploadProgress) || 0));
+            const done = pct >= 100 || f.uploadStatus === "complete";
+            const loadedBytes =
+              f.uploadedBytes !== undefined
+                ? f.uploadedBytes
+                : Math.round((pct / 100) * (f.sizeBytes || 0));
+            return `
+              <div class="glass-card rounded-xl px-3 py-2.5 space-y-1.5 border ${
+                done ? "border-emerald-500/25" : "border-white/[0.08]"
+              }">
+                <div class="flex items-center justify-between gap-2 text-[11px]">
+                  <span class="font-medium text-white truncate" title="${escapeHtml(
+                    f.name
+                  )}">${escapeHtml(f.name)}</span>
+                  <span class="font-mono-code shrink-0 ${
+                    done ? "text-emerald-300" : "text-amber-300"
+                  }">${done ? "100% ✓" : `${pct}%`}</span>
+                </div>
+                <div class="w-full h-1.5 rounded-full bg-slate-950 overflow-hidden">
+                  <div
+                    class="h-full rounded-full transition-all duration-150 ${
+                      done
+                        ? "bg-emerald-400"
+                        : "bg-gradient-to-r from-amber-500 to-amber-300"
+                    }"
+                    style="width: ${pct}%"
+                  ></div>
+                </div>
+                <div class="flex items-center justify-between text-[10px] font-mono-code text-slate-400">
+                  <span>${formatBytes(loadedBytes)} / ${formatBytes(f.sizeBytes)}</span>
+                  <span>${done ? "Synced" : "Uploading…"}</span>
+                </div>
+              </div>
+            `;
+          })
+          .join("")}
+      </div>
+    </div>
+  `;
+}
+
 function renderFilesGridView(files) {
   return `
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
       ${files
         .map((file) => {
           const fbCount = state.feedback.filter((fb) => fb.fileId === file.id).length;
+          const isUploading =
+            file.uploadStatus === "uploading" || file.uploadStatus === "complete";
+          const pct = isUploading
+            ? Math.min(100, Math.max(0, Number(file.uploadProgress) || 0))
+            : 100;
+          const isComplete = pct >= 100 || file.uploadStatus === "complete";
+          const loadedBytes =
+            file.uploadedBytes !== undefined
+              ? file.uploadedBytes
+              : Math.round((pct / 100) * (file.sizeBytes || 0));
+
           return `
             <div class="glass-card rounded-2xl overflow-hidden flex flex-col justify-between group">
               <!-- Media Preview Header -->
@@ -1228,6 +1341,36 @@ function renderFilesGridView(files) {
                 <div class="absolute top-2.5 right-2.5">
                   ${renderApprovalBadge(file.approvalStatus)}
                 </div>
+
+                <!-- Thumbnail Bottom Upload Progress Line Overlay -->
+                <div
+                  data-card-upload-overlay="${escapeHtml(file.id)}"
+                  class="absolute inset-x-0 bottom-0 bg-slate-950/85 backdrop-blur-md px-3 pt-1.5 pb-2 border-t border-white/10 transition-opacity duration-300 ${
+                    isUploading ? "opacity-100" : "opacity-0 pointer-events-none hidden"
+                  }"
+                >
+                  <div class="flex items-center justify-between text-[10px] font-mono-code mb-1">
+                    <span data-card-upload-label="${escapeHtml(file.id)}" class="${
+            isComplete ? "text-emerald-300" : "text-amber-300"
+          } font-medium">
+                      ${isComplete ? "✓ Upload Complete" : "Uploading media…"}
+                    </span>
+                    <span data-card-upload-pct="${escapeHtml(
+                      file.id
+                    )}" class="text-white font-semibold">${pct}%</span>
+                  </div>
+                  <div class="w-full h-1.5 rounded-full bg-white/10 overflow-hidden">
+                    <div
+                      data-card-upload-bar="${escapeHtml(file.id)}"
+                      class="h-full rounded-full transition-all duration-150 ${
+                        isComplete
+                          ? "bg-emerald-400"
+                          : "bg-gradient-to-r from-amber-500 via-amber-400 to-emerald-400"
+                      }"
+                      style="width: ${pct}%"
+                    ></div>
+                  </div>
+                </div>
               </div>
 
               <!-- File Metadata & Actions -->
@@ -1243,6 +1386,38 @@ function renderFilesGridView(files) {
                   <div class="flex items-center justify-between text-[11px] text-slate-400 font-mono-code mt-1">
                     <span>${formatBytes(file.sizeBytes)}</span>
                     <span>${escapeHtml(file.metaLabel || "")}</span>
+                  </div>
+
+                  <!-- Per-Media Card Body Upload Progress Line -->
+                  <div
+                    data-card-upload-wrap="${escapeHtml(file.id)}"
+                    class="mt-2.5 pt-2 border-t border-white/[0.06] space-y-1.5 ${
+                      isUploading ? "" : "hidden"
+                    }"
+                  >
+                    <div class="flex items-center justify-between text-[10px] font-mono-code">
+                      <span
+                        data-card-upload-bytes="${escapeHtml(file.id)}"
+                        class="text-slate-400"
+                      >${formatBytes(loadedBytes)} / ${formatBytes(file.sizeBytes)}</span>
+                      <span
+                        data-card-upload-pct="${escapeHtml(file.id)}"
+                        class="${
+                          isComplete ? "text-emerald-300" : "text-amber-300"
+                        } font-semibold"
+                      >${isComplete ? "100% • Uploaded" : `${pct}%`}</span>
+                    </div>
+                    <div class="w-full h-1.5 rounded-full bg-white/[0.08] overflow-hidden">
+                      <div
+                        data-card-upload-bar="${escapeHtml(file.id)}"
+                        class="h-full rounded-full transition-all duration-150 ${
+                          isComplete
+                            ? "bg-emerald-400"
+                            : "bg-gradient-to-r from-amber-500 via-amber-400 to-emerald-400"
+                        }"
+                        style="width: ${pct}%"
+                      ></div>
+                    </div>
                   </div>
                 </div>
 
@@ -1323,8 +1498,15 @@ function renderFilesTableView(files) {
         </thead>
         <tbody class="divide-y divide-white/[0.06] text-xs">
           ${files
-            .map(
-              (file) => `
+            .map((file) => {
+              const isUploading =
+                file.uploadStatus === "uploading" || file.uploadStatus === "complete";
+              const pct = isUploading
+                ? Math.min(100, Math.max(0, Number(file.uploadProgress) || 0))
+                : 100;
+              const isComplete = pct >= 100 || file.uploadStatus === "complete";
+
+              return `
             <tr class="hover:bg-white/[0.03] transition">
               <td class="py-3 px-4">
                 <div
@@ -1336,6 +1518,28 @@ function renderFilesTableView(files) {
                 <div class="text-[11px] text-slate-500 font-mono-code">${escapeHtml(
                   file.metaLabel || ""
                 )}</div>
+                <div
+                  data-card-upload-wrap="${escapeHtml(file.id)}"
+                  class="mt-1.5 max-w-xs space-y-1 ${isUploading ? "" : "hidden"}"
+                >
+                  <div class="flex items-center justify-between text-[10px] font-mono-code">
+                    <span class="text-slate-400">${
+                      isComplete ? "Uploaded" : "Uploading…"
+                    }</span>
+                    <span data-card-upload-pct="${escapeHtml(file.id)}" class="${
+                isComplete ? "text-emerald-300" : "text-amber-300"
+              }">${pct}%</span>
+                  </div>
+                  <div class="w-full h-1.5 rounded-full bg-white/10 overflow-hidden">
+                    <div
+                      data-card-upload-bar="${escapeHtml(file.id)}"
+                      class="h-full rounded-full transition-all duration-150 ${
+                        isComplete ? "bg-emerald-400" : "bg-amber-400"
+                      }"
+                      style="width: ${pct}%"
+                    ></div>
+                  </div>
+                </div>
               </td>
               <td class="py-3 px-4 hidden sm:table-cell">${renderCategoryBadge(
                 file.category
@@ -1362,8 +1566,8 @@ function renderFilesTableView(files) {
                 </button>
               </td>
             </tr>
-          `
-            )
+          `;
+            })
             .join("")}
         </tbody>
       </table>
@@ -2484,8 +2688,85 @@ function isFolderInsideSharedHierarchy(folderId) {
 }
 
 // ============================================================================
-// INSTANT ZERO-WAIT FILE & FOLDER UPLOAD HANDLERS
+// LIVE PER-MEDIA UPLOAD PROGRESS DOM UPDATER & UPLOAD HANDLERS
 // ============================================================================
+function updateUploadProgressDOM(file) {
+  if (!file || !file.id) return;
+  const fid = file.id;
+  const isUploading =
+    file.uploadStatus === "uploading" || file.uploadStatus === "complete";
+  const pct = isUploading
+    ? Math.min(100, Math.max(0, Number(file.uploadProgress) || 0))
+    : 100;
+  const isComplete = pct >= 100 || file.uploadStatus === "complete";
+  const loadedBytes =
+    file.uploadedBytes !== undefined
+      ? file.uploadedBytes
+      : Math.round((pct / 100) * (file.sizeBytes || 0));
+
+  // 1. Update card progress bars
+  rootEl.querySelectorAll(`[data-card-upload-bar="${fid}"]`).forEach((bar) => {
+    bar.style.width = `${pct}%`;
+    if (isComplete) {
+      bar.className =
+        "h-full rounded-full transition-all duration-150 bg-emerald-400";
+    }
+  });
+
+  // 2. Update card percentage labels
+  rootEl.querySelectorAll(`[data-card-upload-pct="${fid}"]`).forEach((lbl) => {
+    const isOverlayPct = lbl.closest(`[data-card-upload-overlay="${fid}"]`);
+    lbl.textContent = isOverlayPct
+      ? `${pct}%`
+      : isComplete
+      ? "100% • Uploaded"
+      : `${pct}%`;
+    if (!isOverlayPct) {
+      lbl.className = `${
+        isComplete ? "text-emerald-300" : "text-amber-300"
+      } font-semibold`;
+    }
+  });
+
+  // 3. Update card overlay status text
+  rootEl.querySelectorAll(`[data-card-upload-label="${fid}"]`).forEach((lbl) => {
+    lbl.textContent = isComplete ? "✓ Upload Complete" : "Uploading media…";
+    lbl.className = `${
+      isComplete ? "text-emerald-300" : "text-amber-300"
+    } font-medium`;
+  });
+
+  // 4. Update card uploaded bytes text
+  rootEl.querySelectorAll(`[data-card-upload-bytes="${fid}"]`).forEach((el) => {
+    el.textContent = `${formatBytes(loadedBytes)} / ${formatBytes(file.sizeBytes)}`;
+  });
+
+  // 5. Show/hide card upload progress wrappers when finished
+  rootEl.querySelectorAll(`[data-card-upload-overlay="${fid}"]`).forEach((ov) => {
+    if (isUploading) {
+      ov.classList.remove("opacity-0", "pointer-events-none", "hidden");
+      ov.classList.add("opacity-100");
+    } else {
+      ov.classList.add("opacity-0", "pointer-events-none", "hidden");
+      ov.classList.remove("opacity-100");
+    }
+  });
+
+  rootEl.querySelectorAll(`[data-card-upload-wrap="${fid}"]`).forEach((wrap) => {
+    if (isUploading) {
+      wrap.classList.remove("hidden");
+    } else {
+      wrap.classList.add("hidden");
+    }
+  });
+
+  // 6. Refresh the top Active Upload Queue Panel
+  const queueSlot = document.getElementById("active-upload-queue-slot");
+  if (queueSlot) {
+    queueSlot.innerHTML = renderActiveUploadQueueHTML();
+  }
+}
+
 async function handleFilesBatchUpload(fileList) {
   if (!fileList || fileList.length === 0) return;
 
@@ -2495,6 +2776,9 @@ async function handleFilesBatchUpload(fileList) {
     const instantItem = await uploadMediaFile(file, {
       folderId: state.currentFolderId,
       ownerId: state.user?.uid || "default",
+      onProgress: (updatedFile) => {
+        updateUploadProgressDOM(updatedFile);
+      },
       onSynced: () => {
         saveWorkspaceCache();
       },
@@ -2508,10 +2792,10 @@ async function handleFilesBatchUpload(fileList) {
   const isShared = isFolderInsideSharedHierarchy(state.currentFolderId);
   const baseMsg =
     addedFiles.length === 1
-      ? `Added ${addedFiles[0].name}`
-      : `Added ${addedFiles.length} files`;
+      ? `Uploading ${addedFiles[0].name}`
+      : `Uploading ${addedFiles.length} media files`;
   showToast(
-    isShared ? `${baseMsg} • Synced live to Client Portal` : baseMsg,
+    isShared ? `${baseMsg} • Live syncing to Client Portal` : baseMsg,
     "success"
   );
 }
@@ -2569,6 +2853,9 @@ async function handleFolderBatchUpload(fileList) {
     const instantItem = await uploadMediaFile(file, {
       folderId: targetFolderId,
       ownerId: state.user?.uid || "default",
+      onProgress: (updatedFile) => {
+        updateUploadProgressDOM(updatedFile);
+      },
       onSynced: () => {
         saveWorkspaceCache();
       },
@@ -2583,8 +2870,8 @@ async function handleFolderBatchUpload(fileList) {
   const isShared = isFolderInsideSharedHierarchy(state.currentFolderId);
   showToast(
     isShared
-      ? `Added folder "${rootFolderName}" (${fileList.length} files) • Synced live to Client Portal`
-      : `Added folder "${rootFolderName}" (${fileList.length} files)`,
+      ? `Uploading folder "${rootFolderName}" (${fileList.length} files) • Live syncing to Client Portal`
+      : `Uploading folder "${rootFolderName}" (${fileList.length} files)`,
     "success"
   );
 }

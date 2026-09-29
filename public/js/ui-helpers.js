@@ -1,0 +1,344 @@
+// Studio Formatting & UI Helpers
+
+export function formatBytes(bytes = 0) {
+  const n = Number(bytes) || 0;
+  if (n === 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const i = Math.min(Math.floor(Math.log(n) / Math.log(1024)), units.length - 1);
+  const val = n / Math.pow(1024, i);
+  return `${val >= 100 || i === 0 ? val.toFixed(0) : val.toFixed(1)} ${units[i]}`;
+}
+
+export function formatDateShort(isoString) {
+  if (!isoString) return "—";
+  try {
+    const d = new Date(isoString);
+    return d.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  } catch {
+    return "—";
+  }
+}
+
+export function formatRelativeTime(isoString) {
+  if (!isoString) return "";
+  try {
+    const diffMs = Date.now() - new Date(isoString).getTime();
+    const mins = Math.floor(diffMs / 60000);
+    if (mins < 1) return "Just now";
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    const days = Math.floor(hrs / 24);
+    if (days < 30) return `${days}d ago`;
+    return formatDateShort(isoString);
+  } catch {
+    return "";
+  }
+}
+
+export function escapeHtml(str = "") {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+export const GOOGLE_LOGO_SVG = `
+<svg class="w-5 h-5 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
+  <path fill="#4285F4" d="M23.49 12.275c0-.85-.075-1.675-.215-2.475H12v4.69h6.445c-.28 1.495-1.125 2.765-2.395 3.615v3.005h3.875c2.265-2.085 3.565-5.16 3.565-8.835z"/>
+  <path fill="#34A853" d="M12 24c3.24 0 5.955-1.075 7.94-2.91l-3.875-3.005c-1.075.72-2.45 1.15-4.065 1.15-3.125 0-5.775-2.11-6.72-4.945H1.275v3.1A11.996 11.996 0 0 0 12 24z"/>
+  <path fill="#FBBC05" d="M5.28 14.29a7.21 7.21 0 0 1 0-4.58V6.61H1.275a12.004 12.004 0 0 0 0 10.78l4.005-3.1z"/>
+  <path fill="#EA4335" d="M12 4.765c1.76 0 3.34.605 4.585 1.795l3.435-3.435C17.95 1.19 15.235 0 12 0A11.996 11.996 0 0 0 1.275 6.61l4.005 3.1C6.225 6.875 8.875 4.765 12 4.765z"/>
+</svg>`;
+
+let cachedLogoData = null;
+let logoPromise = null;
+
+export function enhanceAppexLogos() {
+  const applyToDom = (data) => {
+    if (!data) return;
+    document.querySelectorAll('img[data-appex-logo="mark"]').forEach((img) => {
+      if (img.src !== data.markUrl) img.src = data.markUrl;
+    });
+    document.querySelectorAll('img[data-appex-logo="full"]').forEach((img) => {
+      if (img.src !== data.fullUrl) img.src = data.fullUrl;
+    });
+  };
+
+  if (cachedLogoData) {
+    applyToDom(cachedLogoData);
+    return;
+  }
+
+  if (!logoPromise) {
+    logoPromise = new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => {
+        try {
+          const w = img.naturalWidth || 1024;
+          const h = img.naturalHeight || 1024;
+          const canvas = document.createElement("canvas");
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0);
+
+          const imgData = ctx.getImageData(0, 0, w, h);
+          const d = imgData.data;
+          for (let i = 0; i < d.length; i += 4) {
+            const r = d[i];
+            const g = d[i + 1];
+            const b = d[i + 2];
+            const maxC = Math.max(r, g, b);
+            const isRedPlay = r > 60 && r - g > 25;
+            if (!isRedPlay) {
+              if (maxC <= 34) {
+                d[i + 3] = 0;
+              } else if (maxC < 62) {
+                d[i + 3] = Math.round(((maxC - 34) / (62 - 34)) * 255);
+              }
+            }
+          }
+          ctx.putImageData(imgData, 0, 0);
+
+          // Full logo cropped tightly around A + APPEX PRODUCTIONS
+          const fullCanvas = document.createElement("canvas");
+          const fx = Math.floor(w * 0.12);
+          const fy = Math.floor(h * 0.08);
+          const fw = Math.floor(w * 0.76);
+          const fh = Math.floor(h * 0.82);
+          fullCanvas.width = fw;
+          fullCanvas.height = fh;
+          fullCanvas.getContext("2d").drawImage(canvas, fx, fy, fw, fh, 0, 0, fw, fh);
+
+          // Mark-only logo cropped tightly around the metallic "A" + red play triangle
+          const markCanvas = document.createElement("canvas");
+          const mx = Math.floor(w * 0.2);
+          const my = Math.floor(h * 0.08);
+          const mw = Math.floor(w * 0.6);
+          const mh = Math.floor(h * 0.54);
+          markCanvas.width = mw;
+          markCanvas.height = mh;
+          markCanvas.getContext("2d").drawImage(canvas, mx, my, mw, mh, 0, 0, mw, mh);
+
+          cachedLogoData = {
+            fullUrl: fullCanvas.toDataURL("image/png"),
+            markUrl: markCanvas.toDataURL("image/png"),
+          };
+          resolve(cachedLogoData);
+        } catch {
+          resolve(null);
+        }
+      };
+      img.onerror = () => resolve(null);
+      img.src = "/assets/appex-logo.webp";
+    });
+  }
+
+  logoPromise.then(applyToDom);
+}
+
+export function getFolderColorStyles(color = "amber") {
+  const map = {
+    amber: {
+      icon: "text-amber-400",
+      badge: "bg-amber-500/10 text-amber-300 border-amber-500/20",
+      dot: "bg-amber-400",
+    },
+    emerald: {
+      icon: "text-emerald-400",
+      badge: "bg-emerald-500/10 text-emerald-300 border-emerald-500/20",
+      dot: "bg-emerald-400",
+    },
+    blue: {
+      icon: "text-sky-400",
+      badge: "bg-sky-500/10 text-sky-300 border-sky-500/20",
+      dot: "bg-sky-400",
+    },
+    rose: {
+      icon: "text-rose-400",
+      badge: "bg-rose-500/10 text-rose-300 border-rose-500/20",
+      dot: "bg-rose-400",
+    },
+    slate: {
+      icon: "text-slate-300",
+      badge: "bg-slate-500/10 text-slate-300 border-slate-500/20",
+      dot: "bg-slate-400",
+    },
+    stone: {
+      icon: "text-stone-300",
+      badge: "bg-stone-500/10 text-stone-300 border-stone-500/20",
+      dot: "bg-stone-400",
+    },
+  };
+  return map[color] || map.amber;
+}
+
+export function renderApprovalBadge(status = "PENDING") {
+  if (status === "APPROVED") {
+    return `<span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-emerald-500/12 text-emerald-300 border border-emerald-500/25">
+      <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+      Approved
+    </span>`;
+  }
+  if (status === "CHANGES_REQUESTED") {
+    return `<span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-rose-500/12 text-rose-300 border border-rose-500/25">
+      <span class="w-1.5 h-1.5 rounded-full bg-rose-400"></span>
+      Revision Needed
+    </span>`;
+  }
+  return `<span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-white/[0.05] text-slate-300 border border-white/[0.09]">
+    <span class="w-1.5 h-1.5 rounded-full bg-amber-400/80"></span>
+    Awaiting Review
+  </span>`;
+}
+
+export function renderCategoryBadge(category = "IMAGE") {
+  if (category === "VIDEO") {
+    return `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono-code uppercase tracking-wider bg-sky-500/15 text-sky-300 border border-sky-500/25">VIDEO</span>`;
+  }
+  if (category === "DOCUMENT") {
+    return `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono-code uppercase tracking-wider bg-amber-500/15 text-amber-300 border border-amber-500/25">DOC</span>`;
+  }
+  return `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono-code uppercase tracking-wider bg-slate-500/20 text-slate-200 border border-white/10">IMAGE</span>`;
+}
+
+/**
+ * Mounts an interactive 60fps Architectural Walkthrough Cinema Player
+ * for the built-in sample 4K video so users can test video playback & scrubbing immediately.
+ */
+export function mountSampleCinemaCanvas(canvasEl, timeLabelEl, scrubberEl, playBtnEl) {
+  if (!canvasEl) return () => {};
+  const ctx = canvasEl.getContext("2d");
+  let isPlaying = true;
+  let progress = 0; // 0 to 12 seconds
+  const duration = 12;
+  let rafId = null;
+  let lastTs = performance.now();
+
+  function formatTimecode(sec) {
+    const whole = Math.floor(sec);
+    const frames = Math.floor((sec - whole) * 24);
+    return `00:${String(whole).padStart(2, "0")}:${String(frames).padStart(2, "0")}`;
+  }
+
+  function drawFrame(t) {
+    const w = canvasEl.width;
+    const h = canvasEl.height;
+    const norm = (t % duration) / duration;
+    const panX = Math.sin(norm * Math.PI * 2) * 55;
+
+    // Twilight sky gradient
+    const sky = ctx.createLinearGradient(0, 0, 0, h * 0.68);
+    sky.addColorStop(0, "#070c17");
+    sky.addColorStop(0.6, "#142238");
+    sky.addColorStop(1, "#243752");
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, w, h);
+
+    // Distant fjord horizon
+    ctx.fillStyle = "#0c1320";
+    ctx.beginPath();
+    ctx.moveTo(0, h * 0.66);
+    ctx.lineTo(w * 0.25 - panX * 0.3, h * 0.48);
+    ctx.lineTo(w * 0.58 - panX * 0.3, h * 0.59);
+    ctx.lineTo(w * 0.85 - panX * 0.3, h * 0.45);
+    ctx.lineTo(w, h * 0.54);
+    ctx.lineTo(w, h * 0.66);
+    ctx.closePath();
+    ctx.fill();
+
+    // Pavilion warm glass volume with subtle camera glide
+    const px = w * 0.18 + panX;
+    const pw = w * 0.64;
+    const py = h * 0.34;
+    const ph = h * 0.31;
+
+    const glow = ctx.createLinearGradient(px, py, px + pw, py + ph);
+    glow.addColorStop(0, "rgba(251, 191, 36, 0.88)");
+    glow.addColorStop(0.55, "rgba(245, 158, 11, 0.62)");
+    glow.addColorStop(1, "rgba(234, 88, 12, 0.32)");
+    ctx.fillStyle = glow;
+    ctx.fillRect(px, py, pw, ph);
+
+    // Roofline cantilever
+    ctx.fillStyle = "#e2e8f0";
+    ctx.fillRect(px - 36, py - 14, pw + 72, 14);
+
+    // Mullions
+    ctx.fillStyle = "#0f172a";
+    for (let i = 0; i <= 5; i++) {
+      const mx = px + (pw / 5) * i;
+      ctx.fillRect(mx - 4, py, 8, ph);
+    }
+
+    // Water reflection
+    const water = ctx.createLinearGradient(0, h * 0.65, 0, h);
+    water.addColorStop(0, "#0e1624");
+    water.addColorStop(1, "#05070b");
+    ctx.fillStyle = water;
+    ctx.fillRect(0, h * 0.65, w, h * 0.35);
+
+    ctx.fillStyle = "rgba(245, 158, 11, 0.18)";
+    ctx.fillRect(px, h * 0.66, pw, h * 0.22);
+
+    // Cinema Timecode Overlay
+    ctx.fillStyle = "rgba(15, 23, 42, 0.72)";
+    ctx.fillRect(24, 24, 280, 34);
+    ctx.fillStyle = "#f8fafc";
+    ctx.font = "13px 'JetBrains Mono', monospace";
+    ctx.fillText(`REC • 4K UHD 24FPS • TC ${formatTimecode(t)}`, 36, 46);
+  }
+
+  function updateUi() {
+    if (timeLabelEl) {
+      timeLabelEl.textContent = `${formatTimecode(progress)} / 00:12:00`;
+    }
+    if (scrubberEl) {
+      scrubberEl.value = String(Math.round((progress / duration) * 100));
+    }
+    if (playBtnEl) {
+      playBtnEl.textContent = isPlaying ? "Pause" : "Play";
+    }
+  }
+
+  function loop(now) {
+    const dt = (now - lastTs) / 1000;
+    lastTs = now;
+    if (isPlaying) {
+      progress = (progress + dt) % duration;
+      drawFrame(progress);
+      updateUi();
+    }
+    rafId = requestAnimationFrame(loop);
+  }
+
+  drawFrame(progress);
+  updateUi();
+  rafId = requestAnimationFrame(loop);
+
+  if (playBtnEl) {
+    playBtnEl.onclick = () => {
+      isPlaying = !isPlaying;
+      updateUi();
+    };
+  }
+  if (scrubberEl) {
+    scrubberEl.oninput = (e) => {
+      progress = (Number(e.target.value) / 100) * duration;
+      drawFrame(progress);
+      updateUi();
+    };
+  }
+
+  return () => {
+    if (rafId) cancelAnimationFrame(rafId);
+  };
+}

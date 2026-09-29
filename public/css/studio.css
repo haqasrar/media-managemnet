@@ -1,0 +1,255 @@
+:root {
+  --bg-obsidian: #14171f;
+  --bg-elevated: #1b1f2a;
+  --glass-surface: rgba(255, 255, 255, 0.065);
+  --glass-surface-hover: rgba(255, 255, 255, 0.1);
+  --glass-strong: rgba(26, 30, 40, 0.85);
+  --glass-card: rgba(255, 255, 255, 0.055);
+  --glass-card-hover: rgba(255, 255, 255, 0.095);
+  --border-hairline: rgba(255, 255, 255, 0.13);
+  --border-highlight: rgba(255, 255, 255, 0.24);
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --accent-amber: #f59e0b;
+  --accent-emerald: #10b981;
+  --accent-rose: #f43f5e;
+  --accent-blue: #38bdf8;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--bg-obsidian);
+  color: var(--text-primary);
+  font-family: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Whitish-black smoky frosted studio background with soft white ambient mist */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(circle at 18% 15%, rgba(255, 255, 255, 0.09), transparent 45%),
+    radial-gradient(circle at 82% 20%, rgba(248, 250, 252, 0.07), transparent 45%),
+    radial-gradient(circle at 50% 90%, rgba(255, 255, 255, 0.06), transparent 50%),
+    linear-gradient(145deg, #181c26 0%, #11141c 50%, #171b24 100%);
+  pointer-events: none;
+}
+
+/* Studio Auth Left Panel — Volumetric Spotlight + Crimson/Platinum Ambient Depth */
+.studio-auth-panel {
+  background:
+    radial-gradient(ellipse 85% 45% at 22% 0%, rgba(255, 255, 255, 0.14), transparent 62%),
+    radial-gradient(circle at 50% 50%, rgba(239, 68, 68, 0.09) 0%, rgba(226, 232, 240, 0.06) 34%, transparent 66%),
+    radial-gradient(ellipse 75% 38% at 50% 100%, rgba(255, 255, 255, 0.07), transparent 65%),
+    linear-gradient(165deg, #1d222f 0%, #12151e 52%, #171b26 100%);
+}
+
+/* Fine Architectural Viewfinder Grid with Radial Vignette Mask */
+.studio-grid-overlay {
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(circle at 50% 50%, rgba(0, 0, 0, 0.95) 15%, rgba(0, 0, 0, 0.45) 55%, transparent 85%);
+  -webkit-mask-image: radial-gradient(circle at 50% 50%, rgba(0, 0, 0, 0.95) 15%, rgba(0, 0, 0, 0.45) 55%, transparent 85%);
+}
+
+/* Elevated Glassmorphic Login Card */
+.studio-auth-card {
+  background: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.095) 0%,
+    rgba(255, 255, 255, 0.035) 100%
+  );
+  backdrop-filter: blur(28px) saturate(150%);
+  -webkit-backdrop-filter: blur(28px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow:
+    0 30px 70px -15px rgba(0, 0, 0, 0.78),
+    0 0 50px -12px rgba(239, 68, 68, 0.12),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.22);
+}
+
+.font-mono-code {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* Core Glassmorphic Surfaces */
+.glass-panel {
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.085) 0%,
+    rgba(255, 255, 255, 0.04) 100%
+  );
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  border: 1px solid var(--border-hairline);
+  box-shadow:
+    0 20px 45px -15px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.16);
+}
+
+.glass-sidebar {
+  background: rgba(22, 26, 35, 0.78);
+  backdrop-filter: blur(26px) saturate(150%);
+  -webkit-backdrop-filter: blur(26px) saturate(150%);
+  border-right: 1px solid var(--border-hairline);
+}
+
+.glass-header {
+  background: rgba(22, 26, 35, 0.74);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  border-bottom: 1px solid var(--border-hairline);
+}
+
+.glass-card {
+  background: var(--glass-card);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid var(--border-hairline);
+  box-shadow:
+    0 4px 20px -4px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.11);
+  transition:
+    transform 180ms cubic-bezier(0.16, 1, 0.3, 1),
+    background-color 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.glass-card:hover {
+  background: var(--glass-card-hover);
+  border-color: var(--border-highlight);
+  transform: translateY(-2px);
+  box-shadow:
+    0 12px 28px -8px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.18);
+}
+
+.glass-modal {
+  background: rgba(24, 28, 38, 0.92);
+  backdrop-filter: blur(28px) saturate(160%);
+  -webkit-backdrop-filter: blur(28px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow:
+    0 28px 64px -12px rgba(0, 0, 0, 0.72),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.18);
+}
+
+.glass-input {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  color: var(--text-primary);
+  transition: border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
+}
+
+.glass-input:focus {
+  outline: none;
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.32);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.06);
+}
+
+.glass-button {
+  background: rgba(255, 255, 255, 0.065);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  color: var(--text-primary);
+  transition: all 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-button:hover {
+  background: rgba(255, 255, 255, 0.11);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.glass-button:active {
+  transform: scale(0.985);
+}
+
+.btn-studio-primary {
+  background: #f8fafc;
+  color: #090b10;
+  font-weight: 600;
+  border: 1px solid #ffffff;
+  box-shadow: 0 2px 12px rgba(255, 255, 255, 0.14);
+  transition: all 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.btn-studio-primary:hover {
+  background: #e2e8f0;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(255, 255, 255, 0.22);
+}
+
+.btn-studio-primary:active {
+  transform: translateY(0) scale(0.985);
+}
+
+/* Simple, purposeful animations */
+@keyframes fadeSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes modalScaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.975) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.animate-view {
+  animation: fadeSlideUp 220ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-modal {
+  animation: modalScaleIn 190ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Drag Over Upload Highlight */
+.dropzone-active {
+  border-color: #38bdf8 !important;
+  background: rgba(56, 189, 248, 0.08) !important;
+}
+
+/* Custom subtle scrollbars */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.26);
+}

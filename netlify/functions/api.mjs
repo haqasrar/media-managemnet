@@ -253,20 +253,35 @@ export async function handler(event) {
 
   // 4. /api/upload
   if (pathname === "/api/upload" && method === "POST") {
-    const providedFileId = headers["x-file-id"] || "";
-    const rawName = decodeURIComponent(headers["x-file-name"] || "upload.bin");
-    const mimeType = headers["x-file-type"] || "application/octet-stream";
-    const folderId = headers["x-folder-id"] || null;
-    const ownerId = headers["x-owner-id"] || "default";
+    const contentType = String(headers["content-type"] || "").toLowerCase();
+    const body = contentType.includes("application/json") ? parseBody(event) : {};
+
+    const providedFileId = body.id || headers["x-file-id"] || "";
+    const rawName =
+      body.name || decodeURIComponent(headers["x-file-name"] || "upload.bin");
+    const mimeType =
+      body.mimeType || headers["x-file-type"] || "application/octet-stream";
+    const folderId =
+      body.folderId !== undefined
+        ? body.folderId
+        : headers["x-folder-id"] || null;
+    const ownerId = body.ownerId || headers["x-owner-id"] || "default";
     const customMeta = headers["x-meta-label"]
       ? decodeURIComponent(headers["x-meta-label"])
       : "";
 
-    const buffer = event.body
-      ? Buffer.from(event.body, event.isBase64Encoded ? "base64" : "utf8")
-      : Buffer.alloc(0);
+    let dataUrl = body.dataUrl || "";
+    let sizeBytes = Number(body.sizeBytes) || 0;
 
-    const dataUrl = `data:${mimeType};base64,${buffer.toString("base64")}`;
+    if (!dataUrl && event.body && !contentType.includes("application/json")) {
+      const buffer = Buffer.from(
+        event.body,
+        event.isBase64Encoded ? "base64" : "utf8"
+      );
+      dataUrl = `data:${mimeType};base64,${buffer.toString("base64")}`;
+      if (!sizeBytes) sizeBytes = buffer.length;
+    }
+
     const category = classifyMimeType(mimeType, rawName);
     const now = new Date().toISOString();
     const finalFileId =
@@ -278,8 +293,9 @@ export async function handler(event) {
       originalName: rawName,
       mimeType,
       category,
-      sizeBytes: buffer.length,
-      url: dataUrl,
+      sizeBytes,
+      url: dataUrl || "/sample-media/brand-stills.svg",
+      posterUrl: body.posterUrl || null,
       storagePath: `cloud/${rawName}`,
       storageProvider: "cloud",
       folderId: folderId === "null" || !folderId ? null : folderId,
@@ -295,7 +311,11 @@ export async function handler(event) {
     const db = readDb();
     const existingIdx = db.files.findIndex((f) => f.id === finalFileId);
     if (existingIdx !== -1) {
-      db.files[existingIdx] = newFile;
+      db.files[existingIdx] = {
+        ...db.files[existingIdx],
+        ...newFile,
+        approvalStatus: db.files[existingIdx].approvalStatus || "PENDING",
+      };
     } else {
       db.files.unshift(newFile);
     }

@@ -587,6 +587,62 @@ const server = http.createServer(async (req, res) => {
     // 5. API: Direct Local Media Binary Upload (/api/upload)
     // ------------------------------------------------------------------------
     if (pathname === "/api/upload" && method === "POST") {
+      const contentType = String(req.headers["content-type"] || "").toLowerCase();
+      if (contentType.includes("application/json")) {
+        const body = await readJsonBody(req);
+        const providedFileId = body.id || req.headers["x-file-id"] || "";
+        const rawName =
+          body.name ||
+          decodeURIComponent(req.headers["x-file-name"] || "upload.bin");
+        const mimeType =
+          body.mimeType || req.headers["x-file-type"] || "application/octet-stream";
+        const folderId =
+          body.folderId !== undefined
+            ? body.folderId
+            : req.headers["x-folder-id"] || null;
+        const ownerId = body.ownerId || req.headers["x-owner-id"] || "default";
+        const category = classifyMimeType(mimeType, rawName);
+        const now = new Date().toISOString();
+        const finalFileId =
+          providedFileId || `file-${crypto.randomBytes(5).toString("hex")}`;
+
+        const newFile = {
+          id: finalFileId,
+          name: rawName,
+          originalName: rawName,
+          mimeType,
+          category,
+          sizeBytes: Number(body.sizeBytes) || 0,
+          url: body.dataUrl || "/sample-media/brand-stills.svg",
+          posterUrl: body.posterUrl || null,
+          storagePath: `cloud/${rawName}`,
+          storageProvider: "cloud",
+          folderId: folderId === "null" || !folderId ? null : folderId,
+          ownerId,
+          metaLabel: getDefaultMetaLabel(category, mimeType, rawName),
+          approvalStatus: "PENDING",
+          isStarred: false,
+          isTrashed: false,
+          createdAt: now,
+          updatedAt: now,
+        };
+
+        const db = readDb();
+        const existingIdx = db.files.findIndex((f) => f.id === finalFileId);
+        if (existingIdx !== -1) {
+          db.files[existingIdx] = {
+            ...db.files[existingIdx],
+            ...newFile,
+            approvalStatus: db.files[existingIdx].approvalStatus || "PENDING",
+          };
+        } else {
+          db.files.unshift(newFile);
+        }
+        writeDb(db);
+        sendJson(res, 201, { file: newFile });
+        return;
+      }
+
       const providedFileId = req.headers["x-file-id"] || "";
       const rawName = decodeURIComponent(req.headers["x-file-name"] || "upload.bin");
       const mimeType = req.headers["x-file-type"] || "application/octet-stream";

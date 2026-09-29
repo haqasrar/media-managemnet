@@ -8,9 +8,18 @@ import {
   renderCategoryBadge,
   mountSampleCinemaCanvas,
   enhanceAppexLogos,
-} from "./ui-helpers.js";
+} from "./ui-helpers.js?v=11";
+import { hydrateMediaFilesFromVault } from "./firebase-client.js?v=11";
 
-export function createClientPortalController({ rootEl, token, onNavigateDashboard, showToast }) {
+export function createClientPortalController({ rootEl, token, showToast }) {
+  // Strictly lock this browser tab to the Client Portal so refreshing never opens the Studio Account
+  try {
+    sessionStorage.setItem("appex_client_portal_lock", token);
+    window.__APPEX_CLIENT_PORTAL_LOCK__ = token;
+  } catch {
+    // ignore storage errors
+  }
+
   let portalData = null;
   let passwordPromptInfo = null;
   let errorMessage = null;
@@ -35,11 +44,6 @@ export function createClientPortalController({ rootEl, token, onNavigateDashboar
       cleanupVideoCanvas = null;
     }
     window.removeEventListener("storage", handleStorageSync);
-  }
-
-  function navigateBackToStudio() {
-    cleanupPortal();
-    if (onNavigateDashboard) onNavigateDashboard();
   }
 
   function resolveLocalCachePortal(serverShare = null) {
@@ -285,9 +289,15 @@ export function createClientPortalController({ rootEl, token, onNavigateDashboar
         serverJson,
         localResolved?.status === 200 ? localResolved.data : null
       );
+      if (merged?.files) {
+        await hydrateMediaFilesFromVault(merged.files);
+      }
       return { status: 200, data: merged };
     }
     if (localResolved) {
+      if (localResolved.data?.files) {
+        await hydrateMediaFilesFromVault(localResolved.data.files);
+      }
       return localResolved;
     }
     return {
@@ -528,17 +538,17 @@ export function createClientPortalController({ rootEl, token, onNavigateDashboar
             </div>
             <h1 class="text-lg font-semibold text-white mb-2">Delivery Link Unavailable</h1>
             <p class="text-sm text-slate-400 leading-relaxed mb-6">${escapeHtml(errorMessage)}</p>
-            <button id="portal-back-studio" class="glass-button px-4 py-2.5 rounded-lg text-xs font-medium text-slate-200 inline-flex items-center gap-2">
-              <i data-lucide="arrow-left" class="w-4 h-4"></i>
-              Return to Studio Workspace
+            <button id="portal-retry-btn" class="glass-button px-4 py-2.5 rounded-lg text-xs font-medium text-slate-200 inline-flex items-center gap-2">
+              <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+              Retry Loading Portal
             </button>
           </div>
         </div>
       `;
       if (window.lucide) window.lucide.createIcons();
       document
-        .getElementById("portal-back-studio")
-        ?.addEventListener("click", navigateBackToStudio);
+        .getElementById("portal-retry-btn")
+        ?.addEventListener("click", () => loadPortal(false));
       return;
     }
 
@@ -644,7 +654,7 @@ export function createClientPortalController({ rootEl, token, onNavigateDashboar
 
     rootEl.innerHTML = `
       <div class="min-h-screen flex flex-col">
-        <!-- Top Frosted Glass Client Header -->
+        <!-- Top Frosted Glass Client Header (Strictly Isolated from Studio Account) -->
         <header class="glass-header sticky top-0 z-30 px-6 py-4">
           <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
             <div class="flex items-center gap-3.5">
@@ -698,14 +708,10 @@ export function createClientPortalController({ rootEl, token, onNavigateDashboar
                       View-Only Protection
                     </span>`
               }
-              <button
-                id="client-switch-studio"
-                class="glass-button px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-300 inline-flex items-center gap-2"
-                title="Switch back to Creator Studio Dashboard"
-              >
-                <i data-lucide="layout-grid" class="w-3.5 h-3.5 text-slate-400"></i>
-                <span>Creator Studio View</span>
-              </button>
+              <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-white/[0.04] text-slate-300 border border-white/[0.09]">
+                <i data-lucide="shield-check" class="w-3.5 h-3.5 text-emerald-400"></i>
+                <span>Verified Client Access</span>
+              </span>
             </div>
           </div>
         </header>
@@ -914,12 +920,24 @@ export function createClientPortalController({ rootEl, token, onNavigateDashboar
                             >
                               ${
                                 file.category === "IMAGE"
-                                  ? `<img src="${escapeHtml(file.url)}" alt="${escapeHtml(
+                                  ? `<img src="${escapeHtml(
+                                      file.posterUrl || file.url
+                                    )}" alt="${escapeHtml(
                                       file.name
-                                    )}" class="w-full h-full object-cover group-hover:scale-[1.02] transition duration-300" />`
+                                    )}" onerror="this.onerror=null;this.src='/sample-media/brand-stills.svg';" class="w-full h-full object-cover group-hover:scale-[1.02] transition duration-300" />`
                                   : file.category === "VIDEO"
                                   ? `<div class="w-full h-full relative flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-950 to-black">
-                                      <video src="${escapeHtml(file.url)}" muted preload="metadata" class="w-full h-full object-cover opacity-75 group-hover:scale-[1.02] transition duration-300"></video>
+                                      ${
+                                        file.posterUrl
+                                          ? `<img src="${escapeHtml(
+                                              file.posterUrl
+                                            )}" alt="${escapeHtml(
+                                              file.name
+                                            )}" class="w-full h-full object-cover opacity-80 group-hover:scale-[1.02] transition duration-300" />`
+                                          : `<video src="${escapeHtml(
+                                              file.url
+                                            )}" muted preload="metadata" class="w-full h-full object-cover opacity-75 group-hover:scale-[1.02] transition duration-300"></video>`
+                                      }
                                       <div class="absolute inset-0 flex items-center justify-center">
                                         <div class="w-12 h-12 rounded-full bg-white/15 backdrop-blur-md border border-white/30 flex items-center justify-center text-white group-hover:scale-105 transition">
                                           <i data-lucide="play" class="w-5 h-5 fill-current ml-0.5"></i>
@@ -1029,10 +1047,6 @@ export function createClientPortalController({ rootEl, token, onNavigateDashboar
     enhanceAppexLogos();
 
     // Bind events
-    document
-      .getElementById("client-switch-studio")
-      ?.addEventListener("click", navigateBackToStudio);
-
     document
       .getElementById("client-refresh-portal")
       ?.addEventListener("click", async () => {

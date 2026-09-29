@@ -255,22 +255,171 @@ function getDefaultMetaLabel(category, filename = "") {
   return `${ext || "DOC"} • Project Document`;
 }
 
+// ============================================================================
+// PERSISTENT INDEXEDDB MEDIA VAULT (STORES PHOTOS, VIDEOS & DOCS ACROSS REFRESH)
+// ============================================================================
+const VAULT_DB_NAME = "appex_media_vault_v1";
+const VAULT_STORE_BY_ID = "media_by_id";
+const VAULT_STORE_BY_NAME = "media_by_name";
+
+let vaultDbPromise = null;
+
+function openMediaVaultDB() {
+  if (typeof indexedDB === "undefined") return Promise.resolve(null);
+  if (vaultDbPromise) return vaultDbPromise;
+
+  vaultDbPromise = new Promise((resolve) => {
+    try {
+      const req = indexedDB.open(VAULT_DB_NAME, 1);
+      req.onupgradeneeded = (e) => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains(VAULT_STORE_BY_ID)) {
+          db.createObjectStore(VAULT_STORE_BY_ID, { keyPath: "id" });
+        }
+        if (!db.objectStoreNames.contains(VAULT_STORE_BY_NAME)) {
+          db.createObjectStore(VAULT_STORE_BY_NAME, { keyPath: "nameKey" });
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+  return vaultDbPromise;
+}
+
+export async function saveMediaToVault({ id, name, blob, dataUrl, posterUrl }) {
+  const db = await openMediaVaultDB();
+  if (!db) return;
+  const nameKey = String(name || "").trim().toLowerCase();
+  const record = {
+    id,
+    nameKey,
+    name,
+    blob: blob || null,
+    dataUrl: dataUrl || null,
+    posterUrl: posterUrl || null,
+    updatedAt: Date.now(),
+  };
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(
+        [VAULT_STORE_BY_ID, VAULT_STORE_BY_NAME],
+        "readwrite"
+      );
+      if (id) tx.objectStore(VAULT_STORE_BY_ID).put(record);
+      if (nameKey) tx.objectStore(VAULT_STORE_BY_NAME).put(record);
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => resolve(false);
+    } catch {
+      resolve(false);
+    }
+  });
+}
+
+export async function getMediaFromVault(id, name) {
+  const db = await openMediaVaultDB();
+  if (!db) return null;
+  const nameKey = String(name || "").trim().toLowerCase();
+
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(
+        [VAULT_STORE_BY_ID, VAULT_STORE_BY_NAME],
+        "readonly"
+      );
+      const idStore = tx.objectStore(VAULT_STORE_BY_ID);
+      const nameStore = tx.objectStore(VAULT_STORE_BY_NAME);
+
+      const getById = id ? idStore.get(id) : null;
+      if (getById) {
+        getById.onsuccess = () => {
+          if (getById.result) {
+            resolve(getById.result);
+          } else if (nameKey) {
+            const getByName = nameStore.get(nameKey);
+            getByName.onsuccess = () => resolve(getByName.result || null);
+            getByName.onerror = () => resolve(null);
+          } else {
+            resolve(null);
+          }
+        };
+        getById.onerror = () => resolve(null);
+      } else if (nameKey) {
+        const getByName = nameStore.get(nameKey);
+        getByName.onsuccess = () => resolve(getByName.result || null);
+        getByName.onerror = () => resolve(null);
+      } else {
+        resolve(null);
+      }
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+// Track live object URLs created in the current browser session so we know which blob: URLs are alive
+const activeSessionBlobUrls = new Set();
+
+export function isLiveSessionBlobUrl(url) {
+  return Boolean(url && activeSessionBlobUrls.has(url));
+}
+
+/**
+ * Hydrates an array of file records from IndexedDB after page refresh.
+ * Restores dead blob: URLs, missing URLs, and full video blobs automatically.
+ */
+export async function hydrateMediaFilesFromVault(files = []) {
+  if (!Array.isArray(files) || files.length === 0) return false;
+  let changed = false;
+
+  for (const file of files) {
+    if (!file) continue;
+    const url = String(file.url || "");
+    const isDeadBlob = url.startsWith("blob:") && !activeSessionBlobUrls.has(url);
+    const isFallbackSvg = url === "/sample-media/brand-stills.svg";
+    const needsVideoBlob =
+      file.category === "VIDEO" &&
+      (!url || isDeadBlob || url.startsWith("data:image/"));
+
+    if (isDeadBlob || !url || isFallbackSvg || needsVideoBlob) {
+      const rec = await getMediaFromVault(file.id, file.name);
+      if (rec) {
+        if (rec.dataUrl && file.category === "IMAGE") {
+          file.url = rec.dataUrl;
+          changed = true;
+        } else if (rec.blob instanceof Blob) {
+          const freshBlobUrl = URL.createObjectURL(rec.blob);
+          activeSessionBlobUrls.add(freshBlobUrl);
+          file.url = freshBlobUrl;
+          if (rec.posterUrl) file.posterUrl = rec.posterUrl;
+          changed = true;
+        } else if (rec.dataUrl) {
+          file.url = rec.dataUrl;
+          changed = true;
+        }
+      }
+    }
+  }
+  return changed;
+}
+
 function createSyncSafeDataUrl(file, category) {
   return new Promise((resolve) => {
-    if (!file) return resolve(null);
+    if (!file) return resolve({ dataUrl: null, posterUrl: null });
 
-    // For raster images larger than 300KB, generate an optimized high-res WebP/JPEG data URL
-    // so multi-megabyte PNG batches fit inside localStorage & Netlify 6MB serverless payloads.
+    // 1. For raster images, generate a crisp, compact WebP/JPEG Data URL (~60KB-95KB)
+    // so dozens of high-res photos fit inside localStorage & Netlify serverless payloads.
     if (
       category === "IMAGE" &&
-      !String(file.type || "").includes("svg") &&
-      file.size > 300 * 1024
+      !String(file.type || "").includes("svg")
     ) {
       const img = new Image();
       const objUrl = URL.createObjectURL(file);
       img.onload = () => {
         try {
-          const maxDim = 1600;
+          const maxDim = 1280;
           let { width, height } = img;
           if (width > maxDim || height > maxDim) {
             if (width >= height) {
@@ -287,58 +436,127 @@ function createSyncSafeDataUrl(file, category) {
           const ctx = canvas.getContext("2d");
           ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
           URL.revokeObjectURL(objUrl);
-          let compressed = canvas.toDataURL("image/webp", 0.84);
+          let compressed = canvas.toDataURL("image/webp", 0.8);
           if (!compressed || compressed.length < 64) {
-            compressed = canvas.toDataURL("image/jpeg", 0.84);
+            compressed = canvas.toDataURL("image/jpeg", 0.8);
           }
-          resolve(compressed);
+          resolve({ dataUrl: compressed, posterUrl: compressed });
         } catch {
           URL.revokeObjectURL(objUrl);
-          resolve(null);
+          resolve({ dataUrl: null, posterUrl: null });
         }
       };
       img.onerror = () => {
         URL.revokeObjectURL(objUrl);
-        resolve(null);
+        resolve({ dataUrl: null, posterUrl: null });
       };
       img.src = objUrl;
       return;
     }
 
-    // For smaller files (< 3.5MB), read directly as Data URL
+    // 2. For videos, capture a poster frame thumbnail + read dataUrl if under 3.5MB
+    if (category === "VIDEO") {
+      const video = document.createElement("video");
+      const objUrl = URL.createObjectURL(file);
+      video.muted = true;
+      video.playsInline = true;
+      video.preload = "metadata";
+
+      let settled = false;
+      const finishVideo = (posterUrl) => {
+        if (settled) return;
+        settled = true;
+        URL.revokeObjectURL(objUrl);
+        if (file.size && file.size < 3.5 * 1024 * 1024) {
+          const reader = new FileReader();
+          reader.onload = () =>
+            resolve({
+              dataUrl: typeof reader.result === "string" ? reader.result : posterUrl,
+              posterUrl,
+            });
+          reader.onerror = () => resolve({ dataUrl: posterUrl, posterUrl });
+          reader.readAsDataURL(file);
+        } else {
+          resolve({ dataUrl: posterUrl, posterUrl });
+        }
+      };
+
+      const timeout = setTimeout(() => finishVideo(null), 2200);
+      video.onloadeddata = () => {
+        try {
+          video.currentTime = Math.min(0.5, (video.duration || 1) * 0.25);
+        } catch {
+          clearTimeout(timeout);
+          finishVideo(null);
+        }
+      };
+      video.onseeked = () => {
+        clearTimeout(timeout);
+        try {
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.min(640, video.videoWidth || 640);
+          canvas.height = Math.min(360, video.videoHeight || 360);
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const poster = canvas.toDataURL("image/webp", 0.78);
+          finishVideo(poster);
+        } catch {
+          finishVideo(null);
+        }
+      };
+      video.onerror = () => {
+        clearTimeout(timeout);
+        finishVideo(null);
+      };
+      video.src = objUrl;
+      return;
+    }
+
+    // 3. For smaller documents/SVGs (< 3.5MB), read directly as Data URL
     if (file.size && file.size < 3.5 * 1024 * 1024) {
       try {
         const reader = new FileReader();
         reader.onload = () => {
-          resolve(typeof reader.result === "string" ? reader.result : null);
+          const res = typeof reader.result === "string" ? reader.result : null;
+          resolve({ dataUrl: res, posterUrl: null });
         };
-        reader.onerror = () => resolve(null);
+        reader.onerror = () => resolve({ dataUrl: null, posterUrl: null });
         reader.readAsDataURL(file);
         return;
       } catch {
-        resolve(null);
+        resolve({ dataUrl: null, posterUrl: null });
         return;
       }
     }
 
-    resolve(null);
+    resolve({ dataUrl: null, posterUrl: null });
   });
 }
 
 /**
- * Instant, non-blocking media file upload with live per-file progress tracking.
- * Immediately creates a playable/viewable object in the workspace with a 0% -> 100%
- * progress line bar and syncs to the backend / cloud storage in the background.
+ * Instant, non-blocking media file upload with live per-file progress tracking
+ * and persistent IndexedDB + cloud-safe Data URL storage so media never breaks on refresh.
  */
 export async function uploadMediaFile(
   file,
-  { folderId, ownerId, onProgress, onSynced } = {}
+  { existingId, folderId, ownerId, onProgress, onSynced } = {}
 ) {
   const now = new Date().toISOString();
   const category = classifyFileCategory(file.type, file.name);
   const instantBlobUrl = URL.createObjectURL(file);
-  const fileId = `file-${Math.random().toString(36).slice(2, 11)}`;
+  activeSessionBlobUrls.add(instantBlobUrl);
+
+  const fileId = existingId || `file-${Math.random().toString(36).slice(2, 11)}`;
   const totalBytes = Number(file.size) || 0;
+
+  // Save raw binary Blob immediately in IndexedDB so even immediate refresh keeps the media
+  saveMediaToVault({
+    id: fileId,
+    name: file.name,
+    blob: file,
+    dataUrl: null,
+    posterUrl: null,
+  });
 
   // Create immediate file item with live upload progress state
   const instantFile = {
@@ -352,6 +570,7 @@ export async function uploadMediaFile(
     uploadProgress: 4,
     uploadStatus: "uploading", // "uploading" | "complete" | "done"
     url: instantBlobUrl,
+    posterUrl: null,
     storagePath: `uploads/${file.name}`,
     storageProvider: "cloud",
     folderId: folderId || null,
@@ -405,19 +624,29 @@ export async function uploadMediaFile(
     }
   }, 65);
 
-  // Prepare sync-safe Data URL for serverless & cross-tab persistence
-  createSyncSafeDataUrl(file, category).then((safeDataUrl) => {
-    if (safeDataUrl && instantFile.url.startsWith("blob:")) {
-      instantFile.url = safeDataUrl;
-      if (onSynced) onSynced(instantFile);
-    }
-  });
-
-  // Sync to backend in the background with matching x-file-id & XHR upload progress
+  // Generate sync-safe Data URL & persist in IndexedDB + sync to backend via JSON (prevents binary UTF-8 corruption on Netlify)
   (async () => {
     try {
+      const { dataUrl, posterUrl } = await createSyncSafeDataUrl(file, category);
+      if (posterUrl) {
+        instantFile.posterUrl = posterUrl;
+      }
+      if (dataUrl && category !== "VIDEO") {
+        instantFile.url = dataUrl;
+      }
+      await saveMediaToVault({
+        id: fileId,
+        name: file.name,
+        blob: file,
+        dataUrl: dataUrl || null,
+        posterUrl: posterUrl || null,
+      });
+      if (onSynced) onSynced(instantFile);
+
+      // Upload JSON payload to /api/upload with XHR upload progress
       const xhr = new XMLHttpRequest();
       xhr.open("POST", "/api/upload", true);
+      xhr.setRequestHeader("Content-Type", "application/json");
       xhr.setRequestHeader("x-file-id", fileId);
       xhr.setRequestHeader("x-file-name", encodeURIComponent(file.name));
       xhr.setRequestHeader("x-file-type", file.type || "application/octet-stream");
@@ -439,13 +668,12 @@ export async function uploadMediaFile(
             const parsed = JSON.parse(xhr.responseText);
             if (
               parsed?.file?.url &&
-              (!parsed.file.url.startsWith("data:") ||
-                parsed.file.url.length < 600 * 1024)
+              parsed.file.url.startsWith("/uploads/")
             ) {
               instantFile.url = parsed.file.url;
             }
           } catch {
-            // keep current url
+            // keep safeDataUrl / blobUrl
           }
         }
         networkDone = true;
@@ -455,7 +683,18 @@ export async function uploadMediaFile(
         networkDone = true;
       };
 
-      xhr.send(file);
+      xhr.send(
+        JSON.stringify({
+          id: fileId,
+          name: file.name,
+          mimeType: file.type || "application/octet-stream",
+          sizeBytes: totalBytes,
+          folderId: folderId || null,
+          ownerId: ownerId || "default",
+          dataUrl: dataUrl || posterUrl || "",
+          posterUrl: posterUrl || "",
+        })
+      );
     } catch {
       networkDone = true;
     }

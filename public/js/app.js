@@ -8,7 +8,9 @@ import {
   signInWithFirebaseGoogle,
   signOutGoogleUser,
   uploadMediaFile,
-} from "./firebase-client.js?v=10";
+  hydrateMediaFilesFromVault,
+  isLiveSessionBlobUrl,
+} from "./firebase-client.js?v=11";
 import {
   formatBytes,
   formatDateShort,
@@ -20,8 +22,8 @@ import {
   renderCategoryBadge,
   mountSampleCinemaCanvas,
   enhanceAppexLogos,
-} from "./ui-helpers.js?v=10";
-import { createClientPortalController } from "./client-portal.js?v=10";
+} from "./ui-helpers.js?v=11";
+import { createClientPortalController } from "./client-portal.js?v=11";
 
 const rootEl = document.getElementById("app-root");
 const globalFileInput = document.getElementById("global-file-input");
@@ -29,6 +31,63 @@ const globalFolderInput = document.getElementById("global-folder-input");
 
 const FIVE_GB = 5 * 1024 * 1024 * 1024;
 const WORKSPACE_CACHE_KEY = "appex_workspace_cache_v1";
+
+/**
+ * Strictly determines if the current browser tab is a Client Share Portal.
+ * Locks the token in sessionStorage so refreshing (F5) in a client portal tab
+ * NEVER falls back to the Studio Account.
+ */
+function getActiveClientPortalToken() {
+  const path = window.location.pathname || "";
+  const searchParams = new URLSearchParams(window.location.search || "");
+  const hash = window.location.hash || "";
+
+  let token = null;
+  if (path.startsWith("/share/")) {
+    token = decodeURIComponent(path.replace("/share/", "").split("/")[0].trim());
+  } else if (searchParams.get("share")) {
+    token = searchParams.get("share").trim();
+  } else if (hash.startsWith("#/share/")) {
+    token = decodeURIComponent(hash.replace("#/share/", "").split("/")[0].trim());
+  }
+
+  if (token) {
+    try {
+      sessionStorage.setItem("appex_client_portal_lock", token);
+      window.__APPEX_CLIENT_PORTAL_LOCK__ = token;
+    } catch {
+      // ignore
+    }
+    return token;
+  }
+
+  // If this tab was locked as a Client Portal and the browser/CDN rewrote the path to "/" on refresh,
+  // keep it strictly locked in the Client Portal unless the user explicitly navigated to /dashboard or /login
+  if (path !== "/dashboard" && path !== "/login") {
+    try {
+      const locked =
+        window.__APPEX_CLIENT_PORTAL_LOCK__ ||
+        sessionStorage.getItem("appex_client_portal_lock");
+      if (locked) {
+        window.history.replaceState({}, "", `/share/${encodeURIComponent(locked)}`);
+        return locked;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  return null;
+}
+
+function openClientShareInNewTab(token) {
+  if (!token) return;
+  const url = `${window.location.origin}/share/${encodeURIComponent(token)}`;
+  const win = window.open(url, "_blank", "noopener");
+  if (!win) {
+    navigateTo(`/share/${encodeURIComponent(token)}`);
+  }
+}
 
 function loadWorkspaceCache() {
   try {
@@ -42,11 +101,28 @@ function loadWorkspaceCache() {
 
 let syncTimer = null;
 
-function toPersistedFileRecord(f, maxDataUrlLen = 600000) {
+function isValidPersistentMediaUrl(u) {
+  if (!u || typeof u !== "string") return false;
+  if (u.startsWith("blob:")) return isLiveSessionBlobUrl(u);
+  if (u === "/sample-media/brand-stills.svg") return false;
+  return (
+    u.startsWith("data:") ||
+    u.startsWith("/uploads/") ||
+    u.startsWith("http") ||
+    u.startsWith("/sample-media/")
+  );
+}
+
+function toPersistedFileRecord(f, maxDataUrlLen = 650000) {
   const { uploadProgress, uploadStatus, uploadedBytes, ...rest } = f;
   let url = rest.url || "";
-  if (url.startsWith("data:") && url.length > maxDataUrlLen) {
-    url = "/sample-media/brand-stills.svg";
+  if (url.startsWith("blob:")) {
+    url = rest.posterUrl || "";
+  } else if (url.startsWith("data:") && url.length > maxDataUrlLen) {
+    url =
+      rest.posterUrl && rest.posterUrl.length <= maxDataUrlLen
+        ? rest.posterUrl
+        : "";
   }
   return { ...rest, url };
 }
@@ -70,7 +146,7 @@ function syncWorkspaceToServer() {
 
 function saveWorkspaceCache() {
   try {
-    const serializableFiles = state.files.map((f) => toPersistedFileRecord(f, 450000));
+    const serializableFiles = state.files.map((f) => toPersistedFileRecord(f, 500000));
     localStorage.setItem(
       WORKSPACE_CACHE_KEY,
       JSON.stringify({
@@ -81,7 +157,7 @@ function saveWorkspaceCache() {
       })
     );
   } catch {
-    // If localStorage hits 5MB quota on large base64 data URLs, store compact records
+    // If localStorage hits 5MB quota on large base64 data URLs, store compact records (full media remains in IndexedDB)
     try {
       const compactFiles = state.files.map((f) => toPersistedFileRecord(f, 180000));
       localStorage.setItem(
@@ -111,12 +187,18 @@ function mergeById(localArr = [], remoteArr = []) {
       map.set(item.id, item);
     } else {
       const rem = map.get(item.id);
-      // Prefer non-blob URL
-      const bestUrl =
-        rem.url && !rem.url.startsWith("blob:")
-          ? rem.url
-          : item.url || rem.url;
-      map.set(item.id, { ...rem, ...item, url: bestUrl });
+      const bestUrl = isValidPersistentMediaUrl(item.url)
+        ? item.url
+        : isValidPersistentMediaUrl(rem.url)
+        ? rem.url
+        : item.posterUrl || rem.posterUrl || item.url || rem.url || "";
+      const bestPoster = item.posterUrl || rem.posterUrl || null;
+      map.set(item.id, {
+        ...rem,
+        ...item,
+        url: bestUrl,
+        posterUrl: bestPoster,
+      });
     }
   }
   return Array.from(map.values());
@@ -198,13 +280,14 @@ function navigateTo(path) {
 window.addEventListener("popstate", () => handleRoute());
 
 async function fetchWorkspaceData() {
+  if (getActiveClientPortalToken()) return;
   try {
     const res = await fetch("/api/sync", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         folders: state.folders,
-        files: state.files,
+        files: state.files.map((f) => toPersistedFileRecord(f, 800000)),
         shares: state.shares,
         feedback: state.feedback,
       }),
@@ -215,6 +298,7 @@ async function fetchWorkspaceData() {
       state.files = mergeById(state.files, data.files || []);
       state.shares = mergeById(state.shares, data.shares || []);
       state.feedback = mergeById(state.feedback, data.feedback || []);
+      await hydrateMediaFilesFromVault(state.files);
       saveWorkspaceCache();
     }
   } catch (err) {
@@ -230,18 +314,15 @@ async function handleRoute() {
     cleanupPreviewVideo = null;
   }
 
-  // 1. Public Client Share Portal (/share/:token)
-  if (path.startsWith("/share/")) {
-    const token = decodeURIComponent(path.replace("/share/", "").split("/")[0]);
-    if (token) {
-      createClientPortalController({
-        rootEl,
-        token,
-        onNavigateDashboard: () => navigateTo("/dashboard"),
-        showToast,
-      });
-      return;
-    }
+  // 1. Strict Public Client Share Portal (/share/:token) — completely isolated from Studio Account
+  const clientToken = getActiveClientPortalToken();
+  if (clientToken) {
+    createClientPortalController({
+      rootEl,
+      token: clientToken,
+      showToast,
+    });
+    return;
   }
 
   // Check Firebase Configuration
@@ -254,8 +335,14 @@ async function handleRoute() {
     return;
   }
 
-  // 3. Creator Studio Dashboard (render immediately, sync workspace in background)
+  // 3. Creator Studio Dashboard (hydrate IndexedDB media vault & render immediately)
   renderDashboard();
+  hydrateMediaFilesFromVault(state.files).then((changed) => {
+    if (changed) {
+      saveWorkspaceCache();
+      renderDashboard();
+    }
+  });
   fetchWorkspaceData().then(() => renderDashboard());
 }
 
@@ -537,6 +624,9 @@ function bindNewUserOnboardingEvents() {
 // CREATOR STUDIO DASHBOARD
 // ============================================================================
 function renderDashboard() {
+  if (getActiveClientPortalToken()) {
+    return;
+  }
   if (cleanupPreviewVideo) {
     cleanupPreviewVideo();
     cleanupPreviewVideo = null;
@@ -1313,12 +1403,20 @@ function renderFilesGridView(files) {
               >
                 ${
                   file.category === "IMAGE"
-                    ? `<img src="${escapeHtml(file.url)}" alt="${escapeHtml(
+                    ? `<img src="${escapeHtml(file.posterUrl || file.url || "/sample-media/nordic-coast.svg")}" alt="${escapeHtml(
                         file.name
-                      )}" class="w-full h-full object-cover group-hover:scale-[1.02] transition duration-300" />`
+                      )}" onerror="this.onerror=null;this.src='/sample-media/nordic-coast.svg';" class="w-full h-full object-cover group-hover:scale-[1.02] transition duration-300" />`
                     : file.category === "VIDEO"
                     ? `<div class="w-full h-full relative flex items-center justify-center bg-slate-950">
-                        <img src="/sample-media/oslo-pavilion.svg" alt="" class="w-full h-full object-cover opacity-55" />
+                        ${
+                          file.posterUrl
+                            ? `<img src="${escapeHtml(file.posterUrl)}" alt="${escapeHtml(
+                                file.name
+                              )}" onerror="this.onerror=null;this.src='/sample-media/oslo-pavilion.svg';" class="w-full h-full object-cover opacity-75 group-hover:scale-[1.02] transition duration-300" />`
+                            : file.url && !file.url.includes("studio-walkthrough.mp4")
+                            ? `<video src="${escapeHtml(file.url)}" muted playsinline preload="metadata" class="w-full h-full object-cover opacity-75"></video>`
+                            : `<img src="/sample-media/oslo-pavilion.svg" alt="" class="w-full h-full object-cover opacity-55" />`
+                        }
                         <div class="absolute inset-0 flex items-center justify-center">
                           <div class="w-11 h-11 rounded-full bg-white/15 backdrop-blur-md border border-white/30 flex items-center justify-center text-white group-hover:scale-105 transition">
                             <i data-lucide="play" class="w-4 h-4 fill-current ml-0.5"></i>
@@ -1980,11 +2078,11 @@ function renderStudioPreviewModal(file) {
           <div class="flex-1 flex items-center justify-center p-6 overflow-auto">
             ${
               file.category === "IMAGE"
-                ? `<img src="${escapeHtml(file.url)}" alt="${escapeHtml(
+                ? `<img src="${escapeHtml(file.url || file.posterUrl || "/sample-media/nordic-coast.svg")}" alt="${escapeHtml(
                     file.name
-                  )}" class="max-w-full max-h-full object-contain rounded-lg shadow-2xl" />`
+                  )}" onerror="this.onerror=null;this.src='/sample-media/nordic-coast.svg';" class="max-w-full max-h-full object-contain rounded-lg shadow-2xl" />`
                 : file.category === "VIDEO"
-                ? file.url.includes("studio-walkthrough.mp4")
+                ? (file.url || "").includes("studio-walkthrough.mp4")
                   ? `<div class="w-full max-w-3xl space-y-3">
                       <canvas id="studio-cinema-canvas" width="960" height="540" class="w-full rounded-xl border border-white/10 shadow-2xl bg-black"></canvas>
                       <div class="glass-panel px-4 py-2.5 rounded-xl flex items-center gap-4">
@@ -1994,10 +2092,10 @@ function renderStudioPreviewModal(file) {
                       </div>
                     </div>`
                   : `<video src="${escapeHtml(
-                      file.url
-                    )}" controls autoplay class="max-w-full max-h-full rounded-xl border border-white/10 shadow-2xl"></video>`
+                      file.url || ""
+                    )}" poster="${escapeHtml(file.posterUrl || "")}" controls autoplay class="max-w-full max-h-full rounded-xl border border-white/10 shadow-2xl"></video>`
                 : `<iframe src="${escapeHtml(
-                    file.url
+                    file.url || ""
                   )}" class="w-full h-full rounded-xl border border-white/10 bg-white"></iframe>`
             }
           </div>
@@ -2624,7 +2722,8 @@ function bindDashboardEvents() {
       const tok = state.createdShareResult.token;
       state.shareTarget = null;
       state.createdShareResult = null;
-      navigateTo(`/share/${tok}`);
+      renderDashboard();
+      openClientShareInNewTab(tok);
     }
   });
 
@@ -2652,7 +2751,7 @@ function bindDashboardEvents() {
   rootEl.querySelectorAll("[data-open-share-portal]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const tok = btn.getAttribute("data-open-share-portal");
-      navigateTo(`/share/${tok}`);
+      openClientShareInNewTab(tok);
     });
   });
 
@@ -2773,7 +2872,16 @@ async function handleFilesBatchUpload(fileList) {
   const addedFiles = [];
   for (let i = 0; i < fileList.length; i++) {
     const file = fileList[i];
+    const existingIdx = state.files.findIndex(
+      (f) =>
+        !f.isTrashed &&
+        (f.folderId || null) === (state.currentFolderId || null) &&
+        f.name === file.name
+    );
+    const existingFile = existingIdx >= 0 ? state.files[existingIdx] : null;
+
     const instantItem = await uploadMediaFile(file, {
+      existingId: existingFile?.id || null,
       folderId: state.currentFolderId,
       ownerId: state.user?.uid || "default",
       onProgress: (updatedFile) => {
@@ -2783,7 +2891,14 @@ async function handleFilesBatchUpload(fileList) {
         saveWorkspaceCache();
       },
     });
-    state.files.unshift(instantItem);
+
+    if (existingFile) {
+      instantItem.approvalStatus = existingFile.approvalStatus || "PENDING";
+      instantItem.isStarred = Boolean(existingFile.isStarred);
+      state.files[existingIdx] = instantItem;
+    } else {
+      state.files.unshift(instantItem);
+    }
     addedFiles.push(instantItem);
   }
 
@@ -2814,27 +2929,38 @@ async function handleFolderBatchUpload(fileList) {
       if (folderPathMap.has(currentKey)) {
         parentId = folderPathMap.get(currentKey);
       } else {
-        const newFolder = {
-          id: `fld-${Math.random().toString(36).slice(2, 11)}`,
-          name: seg,
-          parentId,
-          color: "amber",
-          ownerId: state.user?.uid || "default",
-          isStarred: false,
-          isTrashed: false,
-          createdAt: now,
-          updatedAt: now,
-        };
-        state.folders.unshift(newFolder);
-        folderPathMap.set(currentKey, newFolder.id);
-        parentId = newFolder.id;
+        const existingFolder = state.folders.find(
+          (f) =>
+            !f.isTrashed &&
+            (f.parentId || null) === (parentId || null) &&
+            f.name.toLowerCase() === seg.toLowerCase()
+        );
+        if (existingFolder) {
+          folderPathMap.set(currentKey, existingFolder.id);
+          parentId = existingFolder.id;
+        } else {
+          const newFolder = {
+            id: `fld-${Math.random().toString(36).slice(2, 11)}`,
+            name: seg,
+            parentId,
+            color: "amber",
+            ownerId: state.user?.uid || "default",
+            isStarred: false,
+            isTrashed: false,
+            createdAt: now,
+            updatedAt: now,
+          };
+          state.folders.unshift(newFolder);
+          folderPathMap.set(currentKey, newFolder.id);
+          parentId = newFolder.id;
 
-        // Background sync
-        fetch("/api/folders", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(newFolder),
-        }).catch(() => {});
+          // Background sync
+          fetch("/api/folders", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(newFolder),
+          }).catch(() => {});
+        }
       }
     }
     return parentId;
@@ -2850,7 +2976,16 @@ async function handleFolderBatchUpload(fileList) {
         ? getOrCreateFolderId(folderSegments)
         : state.currentFolderId;
 
+    const existingIdx = state.files.findIndex(
+      (f) =>
+        !f.isTrashed &&
+        (f.folderId || null) === (targetFolderId || null) &&
+        f.name === file.name
+    );
+    const existingFile = existingIdx >= 0 ? state.files[existingIdx] : null;
+
     const instantItem = await uploadMediaFile(file, {
+      existingId: existingFile?.id || null,
       folderId: targetFolderId,
       ownerId: state.user?.uid || "default",
       onProgress: (updatedFile) => {
@@ -2860,7 +2995,14 @@ async function handleFolderBatchUpload(fileList) {
         saveWorkspaceCache();
       },
     });
-    state.files.unshift(instantItem);
+
+    if (existingFile) {
+      instantItem.approvalStatus = existingFile.approvalStatus || "PENDING";
+      instantItem.isStarred = Boolean(existingFile.isStarred);
+      state.files[existingIdx] = instantItem;
+    } else {
+      state.files.unshift(instantItem);
+    }
   }
 
   saveWorkspaceCache();

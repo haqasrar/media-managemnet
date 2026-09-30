@@ -655,9 +655,9 @@ export function createClientPortalController({ rootEl, token, showToast }) {
     rootEl.innerHTML = `
       <div class="min-h-screen flex flex-col">
         <!-- Top Frosted Glass Client Header (Strictly Isolated from Studio Account) -->
-        <header class="glass-header sticky top-0 z-30 px-6 py-4">
-          <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
-            <div class="flex items-center gap-3.5">
+        <header class="glass-header sticky top-0 z-30 px-3.5 sm:px-6 py-3 sm:py-4">
+          <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3 sm:gap-4">
+            <div class="flex items-center gap-3 min-w-0">
               <div class="w-9 h-9 rounded-xl bg-[#080a0f]/90 border border-white/20 flex items-center justify-center shadow-inner p-1 shrink-0">
                 <img
                   data-appex-logo="mark"
@@ -666,32 +666,32 @@ export function createClientPortalController({ rootEl, token, showToast }) {
                   class="w-full h-full object-contain"
                 />
               </div>
-              <div>
-                <div class="flex items-center gap-2">
-                  <span class="text-xs font-mono-code uppercase tracking-widest text-slate-400">${escapeHtml(
+              <div class="min-w-0">
+                <div class="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                  <span class="text-[10px] sm:text-xs font-mono-code uppercase tracking-widest text-slate-400 truncate">${escapeHtml(
                     share.studioName || "Appex Studios"
                   )}</span>
                   <span class="text-slate-600">•</span>
-                  <span class="text-xs text-slate-400">Client Review Portal</span>
+                  <span class="text-[10px] sm:text-xs text-slate-400">Client Review Portal</span>
                 </div>
-                <h1 class="text-base font-semibold text-white tracking-tight">${escapeHtml(
+                <h1 class="text-sm sm:text-base font-semibold text-white tracking-tight truncate">${escapeHtml(
                   share.title
                 )}</h1>
               </div>
             </div>
 
-            <div class="flex flex-wrap items-center gap-2.5">
+            <div class="flex flex-wrap items-center gap-1.5 sm:gap-2.5 w-full sm:w-auto">
               ${
                 share.resourceType === "FOLDER"
-                  ? `<span class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-mono-code bg-emerald-500/10 text-emerald-300 border border-emerald-500/20" title="New files uploaded to this folder appear automatically">
-                      <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                      Live Folder Sync
+                  ? `<span class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] sm:text-[11px] font-mono-code bg-emerald-500/10 text-emerald-300 border border-emerald-500/20" title="New files uploaded to this folder appear automatically">
+                      <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
+                      <span>Live Sync</span>
                     </span>`
                   : ""
               }
               <button
                 id="client-refresh-portal"
-                class="glass-button px-3 py-1.5 rounded-lg text-xs font-medium text-slate-300 inline-flex items-center gap-1.5 hover:text-white"
+                class="glass-button px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium text-slate-300 inline-flex items-center gap-1.5 hover:text-white"
                 title="Sync latest studio uploads"
               >
                 <i data-lucide="refresh-cw" class="w-3.5 h-3.5 text-slate-400"></i>
@@ -699,16 +699,16 @@ export function createClientPortalController({ rootEl, token, showToast }) {
               </button>
               ${
                 share.allowDownload
-                  ? `<span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
-                      <i data-lucide="download" class="w-3.5 h-3.5"></i>
-                      Downloads Permitted
+                  ? `<span class="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-[11px] sm:text-xs bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
+                      <i data-lucide="download" class="w-3.5 h-3.5 shrink-0"></i>
+                      <span>Downloads Permitted</span>
                     </span>`
-                  : `<span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-amber-500/10 text-amber-300 border border-amber-500/20">
-                      <i data-lucide="eye" class="w-3.5 h-3.5"></i>
-                      View-Only Protection
+                  : `<span class="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-[11px] sm:text-xs bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                      <i data-lucide="eye" class="w-3.5 h-3.5 shrink-0"></i>
+                      <span>View-Only</span>
                     </span>`
               }
-              <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-white/[0.04] text-slate-300 border border-white/[0.09]">
+              <span class="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-white/[0.04] text-slate-300 border border-white/[0.09]">
                 <i data-lucide="shield-check" class="w-3.5 h-3.5 text-emerald-400"></i>
                 <span>Verified Client Access</span>
               </span>
@@ -717,12 +717,12 @@ export function createClientPortalController({ rootEl, token, showToast }) {
         </header>
 
         <!-- Main Deliverable Content -->
-        <main class="flex-1 max-w-7xl w-full mx-auto px-6 py-8 animate-view">
+        <main class="flex-1 max-w-7xl w-full mx-auto px-3.5 sm:px-6 py-5 sm:py-8 animate-view">
           <!-- Deliverable Overview Hero Card -->
-          <div class="glass-panel rounded-2xl p-6 mb-8">
-            <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+          <div class="glass-panel rounded-2xl p-4 sm:p-6 mb-6 sm:mb-8">
+            <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-5 sm:gap-6">
               <div class="space-y-2 max-w-3xl">
-                <div class="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+                <div class="flex flex-wrap items-center gap-1.5 sm:gap-2 text-[11px] sm:text-xs text-slate-400">
                   <span class="font-mono-code uppercase tracking-wider text-amber-300/90">${
                     share.resourceType === "FOLDER" ? "SHARED FOLDER PACKAGE" : "SINGLE DELIVERABLE"
                   }</span>
@@ -736,12 +736,12 @@ export function createClientPortalController({ rootEl, token, showToast }) {
                       : ""
                   }
                 </div>
-                <h2 class="text-2xl font-semibold text-white tracking-tight">${escapeHtml(
+                <h2 class="text-xl sm:text-2xl font-semibold text-white tracking-tight">${escapeHtml(
                   share.title
                 )}</h2>
                 ${
                   share.description
-                    ? `<p class="text-sm text-slate-300/90 leading-relaxed">${escapeHtml(
+                    ? `<p class="text-xs sm:text-sm text-slate-300/90 leading-relaxed">${escapeHtml(
                         share.description
                       )}</p>`
                     : `<p class="text-xs text-slate-400">Live studio delivery portal — inspect files, leave review notes, or download approved assets.</p>`
@@ -749,22 +749,22 @@ export function createClientPortalController({ rootEl, token, showToast }) {
               </div>
 
               <!-- Deliverable Metrics & Download All -->
-              <div class="flex flex-wrap items-center gap-3 shrink-0">
-                <div class="glass-card px-4 py-3 rounded-xl min-w-[110px]">
-                  <div class="text-[11px] text-slate-400">Deliverables</div>
-                  <div class="text-lg font-semibold text-white font-mono-code mt-0.5">${
+              <div class="grid grid-cols-2 sm:flex sm:flex-wrap items-stretch sm:items-center gap-2.5 sm:gap-3 shrink-0">
+                <div class="glass-card px-3.5 py-2.5 sm:px-4 sm:py-3 rounded-xl sm:min-w-[110px]">
+                  <div class="text-[10px] sm:text-[11px] text-slate-400">Deliverables</div>
+                  <div class="text-base sm:text-lg font-semibold text-white font-mono-code mt-0.5">${
                     files.length
                   } ${files.length === 1 ? "File" : "Files"}</div>
                 </div>
-                <div class="glass-card px-4 py-3 rounded-xl min-w-[110px]">
-                  <div class="text-[11px] text-slate-400">Package Size</div>
-                  <div class="text-lg font-semibold text-white font-mono-code mt-0.5">${formatBytes(
+                <div class="glass-card px-3.5 py-2.5 sm:px-4 sm:py-3 rounded-xl sm:min-w-[110px]">
+                  <div class="text-[10px] sm:text-[11px] text-slate-400">Package Size</div>
+                  <div class="text-base sm:text-lg font-semibold text-white font-mono-code mt-0.5">${formatBytes(
                     totalBytes
                   )}</div>
                 </div>
-                <div class="glass-card px-4 py-3 rounded-xl min-w-[125px]">
-                  <div class="text-[11px] text-slate-400">Approved</div>
-                  <div class="text-lg font-semibold text-emerald-400 font-mono-code mt-0.5">${approvedCount} / ${
+                <div class="glass-card px-3.5 py-2.5 sm:px-4 sm:py-3 rounded-xl sm:min-w-[125px] col-span-2 sm:col-span-1">
+                  <div class="text-[10px] sm:text-[11px] text-slate-400">Approved</div>
+                  <div class="text-base sm:text-lg font-semibold text-emerald-400 font-mono-code mt-0.5">${approvedCount} / ${
       files.length
     }</div>
                 </div>
@@ -772,7 +772,7 @@ export function createClientPortalController({ rootEl, token, showToast }) {
                   share.allowDownload && files.length > 1
                     ? `<button
                         id="client-download-all-btn"
-                        class="btn-studio-primary px-4 py-3 rounded-xl text-xs font-semibold inline-flex items-center gap-2 shadow-lg"
+                        class="btn-studio-primary px-4 py-3 rounded-xl text-xs font-semibold inline-flex items-center justify-center gap-2 shadow-lg col-span-2 sm:col-span-1"
                       >
                         <i data-lucide="download-cloud" class="w-4 h-4"></i>
                         <span>Download All (${files.length})</span>
@@ -784,8 +784,8 @@ export function createClientPortalController({ rootEl, token, showToast }) {
           </div>
 
           <!-- Breadcrumbs & Filter Bar -->
-          <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
-            <div class="flex items-center gap-1.5 text-sm flex-wrap">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 mb-5 sm:mb-6">
+            <div class="flex items-center gap-1.5 text-xs sm:text-sm flex-wrap">
               ${
                 breadcrumbs.length > 0
                   ? breadcrumbs
@@ -800,8 +800,8 @@ export function createClientPortalController({ rootEl, token, showToast }) {
                           : "text-slate-400 hover:text-white hover:bg-white/5"
                       }"
                     >
-                      <i data-lucide="folder" class="w-3.5 h-3.5 text-amber-400"></i>
-                      ${escapeHtml(b.name)}
+                      <i data-lucide="folder" class="w-3.5 h-3.5 text-amber-400 shrink-0"></i>
+                      <span class="truncate max-w-[140px] sm:max-w-none">${escapeHtml(b.name)}</span>
                     </button>
                   `
                       )
@@ -810,8 +810,8 @@ export function createClientPortalController({ rootEl, token, showToast }) {
               }
             </div>
 
-            <!-- Filter Pills -->
-            <div class="flex flex-wrap items-center gap-1.5 bg-white/[0.03] p-1 rounded-xl border border-white/[0.07]">
+            <!-- Filter Pills (Horizontally scrollable on mobile) -->
+            <div class="flex items-center gap-1.5 bg-white/[0.03] p-1 rounded-xl border border-white/[0.07] overflow-x-auto no-scrollbar w-full sm:w-auto">
               ${[
                 { id: "ALL", label: "All Items" },
                 { id: "IMAGE", label: "Images" },
@@ -824,7 +824,7 @@ export function createClientPortalController({ rootEl, token, showToast }) {
                   (tab) => `
                   <button
                     data-portal-filter="${tab.id}"
-                    class="px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                    class="px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium shrink-0 transition ${
                       activeCategoryFilter === tab.id
                         ? "bg-white text-slate-950 shadow-sm"
                         : "text-slate-400 hover:text-slate-200"
@@ -842,11 +842,11 @@ export function createClientPortalController({ rootEl, token, showToast }) {
           ${
             activeCategoryFilter === "ALL" && visibleSubfolders.length > 0
               ? `
-            <div class="mb-8">
+            <div class="mb-6 sm:mb-8">
               <div class="text-xs font-mono-code uppercase tracking-wider text-slate-400 mb-3">Subfolders (${
                 visibleSubfolders.length
               })</div>
-              <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4">
                 ${visibleSubfolders
                   .map((fld) => {
                     const c = getFolderColorStyles(fld.color);
@@ -857,7 +857,7 @@ export function createClientPortalController({ rootEl, token, showToast }) {
                         class="glass-card rounded-xl p-4 cursor-pointer flex items-center justify-between group"
                       >
                         <div class="flex items-center gap-3.5 min-w-0">
-                          <div class="w-10 h-10 rounded-xl bg-white/[0.04] border border-white/[0.08] flex items-center justify-center ${
+                          <div class="w-10 h-10 rounded-xl bg-white/[0.04] border border-white/[0.08] flex items-center justify-center shrink-0 ${
                             c.icon
                           }">
                             <i data-lucide="folder" class="w-5 h-5 fill-current opacity-80"></i>
@@ -871,7 +871,7 @@ export function createClientPortalController({ rootEl, token, showToast }) {
                     }</div>
                           </div>
                         </div>
-                        <i data-lucide="chevron-right" class="w-4 h-4 text-slate-500 group-hover:text-slate-200 transition"></i>
+                        <i data-lucide="chevron-right" class="w-4 h-4 text-slate-500 group-hover:text-slate-200 transition shrink-0"></i>
                       </div>
                     `;
                   })
@@ -884,10 +884,10 @@ export function createClientPortalController({ rootEl, token, showToast }) {
 
           <!-- Shared Media Files Grid -->
           <div>
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
               ${
                 visibleFiles.length === 0
-                  ? `<div class="col-span-full glass-panel rounded-2xl p-12 text-center space-y-3">
+                  ? `<div class="col-span-full glass-panel rounded-2xl p-8 sm:p-12 text-center space-y-3">
                       <div class="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center mx-auto text-amber-300">
                         <i data-lucide="folder-sync" class="w-6 h-6"></i>
                       </div>
@@ -916,7 +916,7 @@ export function createClientPortalController({ rootEl, token, showToast }) {
                             <!-- Media Thumbnail Area -->
                             <div
                               data-inspect-file="${escapeHtml(file.id)}"
-                              class="relative h-52 bg-slate-950/70 border-b border-white/[0.07] cursor-pointer overflow-hidden flex items-center justify-center"
+                              class="relative h-48 sm:h-52 bg-slate-950/70 border-b border-white/[0.07] cursor-pointer overflow-hidden flex items-center justify-center"
                             >
                               ${
                                 file.category === "IMAGE"
@@ -936,7 +936,7 @@ export function createClientPortalController({ rootEl, token, showToast }) {
                                             )}" class="w-full h-full object-cover opacity-80 group-hover:scale-[1.02] transition duration-300" />`
                                           : `<video src="${escapeHtml(
                                               file.url
-                                            )}" muted preload="metadata" class="w-full h-full object-cover opacity-75 group-hover:scale-[1.02] transition duration-300"></video>`
+                                            )}" muted playsinline preload="metadata" class="w-full h-full object-cover opacity-75 group-hover:scale-[1.02] transition duration-300"></video>`
                                       }
                                       <div class="absolute inset-0 flex items-center justify-center">
                                         <div class="w-12 h-12 rounded-full bg-white/15 backdrop-blur-md border border-white/30 flex items-center justify-center text-white group-hover:scale-105 transition">
@@ -962,7 +962,7 @@ export function createClientPortalController({ rootEl, token, showToast }) {
                             </div>
 
                             <!-- Card Body -->
-                            <div class="p-4 flex-1 flex flex-col justify-between space-y-4">
+                            <div class="p-3.5 sm:p-4 flex-1 flex flex-col justify-between space-y-3.5 sm:space-y-4">
                               <div>
                                 <div class="text-sm font-medium text-white truncate" title="${escapeHtml(
                                   file.name
@@ -970,7 +970,7 @@ export function createClientPortalController({ rootEl, token, showToast }) {
                                 <div class="flex items-center gap-2 mt-1 text-xs text-slate-400 font-mono-code">
                                   <span>${formatBytes(file.sizeBytes)}</span>
                                   <span>•</span>
-                                  <span>${escapeHtml(file.metaLabel || file.mimeType)}</span>
+                                  <span class="truncate">${escapeHtml(file.metaLabel || file.mimeType)}</span>
                                 </div>
                               </div>
 
@@ -1029,7 +1029,7 @@ export function createClientPortalController({ rootEl, token, showToast }) {
         </main>
 
         <!-- Client Portal Footer -->
-        <footer class="px-6 py-4 border-t border-white/[0.06] text-center text-xs text-slate-400">
+        <footer class="px-4 sm:px-6 py-4 border-t border-white/[0.06] text-center text-xs text-slate-400">
           <span>Powered by <strong class="text-slate-200">Appex Studios</strong> • From </span>
           <a
             href="https://appexproductions.com"
@@ -1166,23 +1166,23 @@ function renderClientFileModal(file, share, allFeedback, clientReviewerName) {
   const fileFeedback = allFeedback.filter((fb) => fb.fileId === file.id);
 
   return `
-    <div class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 lg:p-8">
-      <div class="glass-modal w-full max-w-6xl h-[86vh] rounded-2xl overflow-hidden flex flex-col lg:flex-row animate-modal">
+    <div class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 lg:p-8">
+      <div class="glass-modal w-full max-w-6xl h-[92dvh] lg:h-[86vh] rounded-2xl overflow-y-auto lg:overflow-hidden flex flex-col lg:flex-row animate-modal">
         <!-- Left Media Stage -->
-        <div class="flex-1 bg-slate-950/90 flex flex-col min-h-0 border-b lg:border-b-0 lg:border-r border-white/[0.08]">
-          <div class="px-5 py-3.5 border-b border-white/[0.08] flex items-center justify-between gap-4">
-            <div class="flex items-center gap-2.5 min-w-0">
+        <div class="flex-1 bg-slate-950/90 flex flex-col min-h-[250px] sm:min-h-[340px] lg:min-h-0 border-b lg:border-b-0 lg:border-r border-white/[0.08]">
+          <div class="px-3.5 sm:px-5 py-3 sm:py-3.5 border-b border-white/[0.08] flex items-center justify-between gap-2 sm:gap-4">
+            <div class="flex items-center gap-2 min-w-0">
               ${renderCategoryBadge(file.category)}
-              <span class="text-sm font-medium text-white truncate">${escapeHtml(
+              <span class="text-xs sm:text-sm font-medium text-white truncate max-w-[165px] sm:max-w-xs">${escapeHtml(
                 file.name
               )}</span>
             </div>
-            <div class="flex items-center gap-2 shrink-0">
+            <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
               ${
                 share.allowDownload
-                  ? `<button id="modal-client-download" class="glass-button px-3 py-1.5 rounded-lg text-xs font-medium text-slate-200 inline-flex items-center gap-1.5">
+                  ? `<button id="modal-client-download" class="glass-button px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium text-slate-200 inline-flex items-center gap-1.5">
                       <i data-lucide="download" class="w-3.5 h-3.5"></i>
-                      Download
+                      <span class="hidden sm:inline">Download</span>
                     </button>`
                   : ""
               }
@@ -1192,35 +1192,35 @@ function renderClientFileModal(file, share, allFeedback, clientReviewerName) {
             </div>
           </div>
 
-          <div class="flex-1 flex items-center justify-center p-6 overflow-auto">
+          <div class="flex-1 flex items-center justify-center p-3 sm:p-6 overflow-auto min-h-[210px]">
             ${
               file.category === "IMAGE"
                 ? `<img src="${escapeHtml(file.url)}" alt="${escapeHtml(
                     file.name
-                  )}" class="max-w-full max-h-full object-contain rounded-lg shadow-2xl" />`
+                  )}" class="max-w-full max-h-[52vh] lg:max-h-full object-contain rounded-lg shadow-2xl" />`
                 : file.category === "VIDEO"
                 ? file.url.includes("studio-walkthrough.mp4")
                   ? `<div class="w-full max-w-3xl space-y-3">
                       <canvas id="sample-cinema-canvas" width="960" height="540" class="w-full rounded-xl border border-white/10 shadow-2xl bg-black"></canvas>
-                      <div class="glass-panel px-4 py-2.5 rounded-xl flex items-center gap-4">
+                      <div class="glass-panel px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl flex items-center gap-3 sm:gap-4">
                         <button id="sample-cinema-play" type="button" class="btn-studio-primary px-3 py-1 rounded text-xs">Pause</button>
                         <input id="sample-cinema-scrubber" type="range" min="0" max="100" value="0" class="flex-1 accent-amber-400 cursor-pointer" />
-                        <span id="sample-cinema-time" class="text-xs font-mono-code text-slate-300">00:00:00 / 00:12:00</span>
+                        <span id="sample-cinema-time" class="text-[11px] sm:text-xs font-mono-code text-slate-300">00:00:00 / 00:12:00</span>
                       </div>
                     </div>`
                   : `<video src="${escapeHtml(
                       file.url
-                    )}" controls autoplay class="max-w-full max-h-full rounded-xl border border-white/10 shadow-2xl"></video>`
+                    )}" controls autoplay playsinline class="max-w-full max-h-[52vh] lg:max-h-full rounded-xl border border-white/10 shadow-2xl"></video>`
                 : `<iframe src="${escapeHtml(
                     file.url
-                  )}" class="w-full h-full rounded-xl border border-white/10 bg-white"></iframe>`
+                  )}" class="w-full h-[48vh] lg:h-full rounded-xl border border-white/10 bg-white"></iframe>`
             }
           </div>
         </div>
 
         <!-- Right Client Approval & Notes Sidebar -->
         <div class="w-full lg:w-96 flex flex-col bg-slate-950/50 min-h-0">
-          <div class="p-5 border-b border-white/[0.08] flex items-center justify-between">
+          <div class="p-4 sm:p-5 border-b border-white/[0.08] flex items-center justify-between">
             <div>
               <div class="text-xs font-mono-code uppercase tracking-wider text-slate-400">Deliverable Status</div>
               <div class="mt-1.5">${renderApprovalBadge(file.approvalStatus)}</div>
@@ -1234,7 +1234,7 @@ function renderClientFileModal(file, share, allFeedback, clientReviewerName) {
           </div>
 
           <!-- Feedback History -->
-          <div class="flex-1 overflow-y-auto p-5 space-y-3">
+          <div class="flex-1 overflow-y-auto p-4 sm:p-5 space-y-3">
             <div class="text-xs font-mono-code uppercase tracking-wider text-slate-400 mb-2">Review & Revision Log (${
               fileFeedback.length
             })</div>
@@ -1276,7 +1276,7 @@ function renderClientFileModal(file, share, allFeedback, clientReviewerName) {
           ${
             share.allowFeedback
               ? `
-            <form id="client-review-form" class="p-5 border-t border-white/[0.08] space-y-3 bg-white/[0.01]">
+            <form id="client-review-form" class="p-4 sm:p-5 border-t border-white/[0.08] space-y-3 bg-white/[0.01]">
               <div>
                 <label class="block text-[11px] text-slate-400 mb-1">Your Name / Organization</label>
                 <input
@@ -1309,7 +1309,7 @@ function renderClientFileModal(file, share, allFeedback, clientReviewerName) {
                   class="glass-input w-full px-3 py-2 rounded-lg text-xs resize-none"
                 ></textarea>
               </div>
-              <button type="submit" class="btn-studio-primary w-full py-2 rounded-lg text-xs">
+              <button type="submit" class="btn-studio-primary w-full py-2.5 rounded-lg text-xs">
                 Submit Client Review
               </button>
             </form>

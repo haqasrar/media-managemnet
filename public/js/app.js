@@ -23,7 +23,7 @@ import {
   mountSampleCinemaCanvas,
   enhanceAppexLogos,
 } from "./ui-helpers.js?v=12";
-import { createClientPortalController } from "./client-portal.js?v=12";
+import { createClientPortalController } from "./client-portal.js?v=13";
 
 const rootEl = document.getElementById("app-root");
 const globalFileInput = document.getElementById("global-file-input");
@@ -255,7 +255,8 @@ const state = {
   // Upload Queue (disabled blocking loader; instant updates)
   uploadStatus: null,
 
-  // Modals
+  // Modals & Responsive Navigation
+  mobileSidebarOpen: false,
   showNewFolderModal: false,
   showFirebaseModal: false,
   showGoogleAccountModal: false,
@@ -489,29 +490,29 @@ function renderGoogleLoginScreen() {
   rootEl.innerHTML = `
     <div class="min-h-screen lg:h-screen lg:overflow-hidden grid grid-cols-1 lg:grid-cols-12 bg-[#12151e]">
       <!-- LEFT SIDE: ARCHITECTURAL STUDIO BACKGROUND, TOP-LEFT LOGO, CENTER CARD, BOTTOM FOOTER -->
-      <div class="lg:col-span-5 xl:col-span-5 min-h-screen lg:h-screen flex flex-col justify-between border-b lg:border-b-0 lg:border-r border-white/[0.12] studio-auth-panel relative overflow-hidden z-10">
+      <div class="lg:col-span-5 xl:col-span-5 min-h-[520px] lg:h-screen flex flex-col justify-between border-b lg:border-b-0 lg:border-r border-white/[0.12] studio-auth-panel relative overflow-hidden z-10">
         
         <!-- Visual Background Architecture (Grid, Viewfinder Corners, Lens Rings & Studio Light) -->
         <div class="pointer-events-none absolute inset-0 studio-grid-overlay"></div>
 
         <!-- Ambient Studio Spotlights & Concentric Aperture Rings Behind Card -->
         <div class="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden">
-          <div class="w-[540px] h-[540px] rounded-full border border-white/[0.045] absolute"></div>
-          <div class="w-[390px] h-[390px] rounded-full border border-dashed border-white/[0.07] absolute"></div>
-          <div class="w-[280px] h-[280px] rounded-full bg-red-500/[0.08] blur-[75px] absolute -translate-y-4"></div>
-          <div class="w-[320px] h-[320px] rounded-full bg-slate-200/[0.06] blur-[85px] absolute translate-y-6"></div>
+          <div class="w-[340px] h-[340px] sm:w-[540px] sm:h-[540px] rounded-full border border-white/[0.045] absolute"></div>
+          <div class="w-[260px] h-[260px] sm:w-[390px] sm:h-[390px] rounded-full border border-dashed border-white/[0.07] absolute"></div>
+          <div class="w-[220px] h-[220px] sm:w-[280px] sm:h-[280px] rounded-full bg-red-500/[0.08] blur-[75px] absolute -translate-y-4"></div>
+          <div class="w-[240px] h-[240px] sm:w-[320px] sm:h-[320px] rounded-full bg-slate-200/[0.06] blur-[85px] absolute translate-y-6"></div>
         </div>
 
         <!-- Subtle Camera Viewfinder Framing Marks -->
-        <div class="pointer-events-none absolute top-24 left-7 w-4 h-4 border-t border-l border-white/20"></div>
-        <div class="pointer-events-none absolute top-24 right-7 w-4 h-4 border-t border-r border-white/20"></div>
-        <div class="pointer-events-none absolute bottom-16 left-7 w-4 h-4 border-b border-l border-white/20"></div>
-        <div class="pointer-events-none absolute bottom-16 right-7 w-4 h-4 border-b border-r border-white/20"></div>
+        <div class="hidden sm:block pointer-events-none absolute top-24 left-7 w-4 h-4 border-t border-l border-white/20"></div>
+        <div class="hidden sm:block pointer-events-none absolute top-24 right-7 w-4 h-4 border-t border-r border-white/20"></div>
+        <div class="hidden sm:block pointer-events-none absolute bottom-16 left-7 w-4 h-4 border-b border-l border-white/20"></div>
+        <div class="hidden sm:block pointer-events-none absolute bottom-16 right-7 w-4 h-4 border-b border-r border-white/20"></div>
 
         <!-- 1. Top Header Bar — Official Appex Logo pinned at Top-Left Corner -->
-        <header class="relative z-10 w-full px-7 pt-6 pb-3 flex items-center justify-between gap-3">
-          <div class="flex items-center gap-3.5">
-            <div class="w-11 h-11 rounded-xl bg-[#080a0f]/90 border border-white/20 flex items-center justify-center shadow-[0_8px_20px_rgba(0,0,0,0.65)] shrink-0 p-1.5">
+        <header class="relative z-10 w-full px-4 sm:px-7 pt-4 sm:pt-6 pb-2 sm:pb-3 flex items-center justify-between gap-3">
+          <div class="flex items-center gap-3 sm:gap-3.5">
+            <div class="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-[#080a0f]/90 border border-white/20 flex items-center justify-center shadow-[0_8px_20px_rgba(0,0,0,0.65)] shrink-0 p-1.5">
               <img
                 data-appex-logo="mark"
                 src="/assets/appex-logo.webp"
@@ -520,37 +521,37 @@ function renderGoogleLoginScreen() {
               />
             </div>
             <div>
-              <div class="text-sm font-bold tracking-wider text-white uppercase leading-none">APPEX STUDIOS</div>
-              <div class="text-[10px] font-mono-code text-slate-300 tracking-wider mt-1">MEDIA VAULT & CLIENT PORTAL</div>
+              <div class="text-xs sm:text-sm font-bold tracking-wider text-white uppercase leading-none">APPEX STUDIOS</div>
+              <div class="text-[9px] sm:text-[10px] font-mono-code text-slate-300 tracking-wider mt-1">MEDIA VAULT & CLIENT PORTAL</div>
             </div>
           </div>
         </header>
 
         <!-- 2. Center Glassmorphic Sign-In Card -->
-        <div class="relative z-10 my-auto mx-auto w-full max-w-[450px] px-6 py-6">
-          <div class="studio-auth-card rounded-2xl p-7 sm:p-8 w-full animate-view space-y-6 relative overflow-hidden">
+        <div class="relative z-10 my-auto mx-auto w-full max-w-[450px] px-4 sm:px-6 py-4 sm:py-6">
+          <div class="studio-auth-card rounded-2xl p-5 sm:p-8 w-full animate-view space-y-5 sm:space-y-6 relative overflow-hidden">
             <!-- Top Specular Metallic & Crimson Rim Line -->
             <div class="pointer-events-none absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-red-400/50 to-transparent"></div>
 
             <!-- Official Appex Emblem + Badge Header -->
-            <div class="flex items-center justify-between gap-3">
-              <div class="inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-red-500/12 border border-red-400/30 text-[10px] font-mono-code text-red-300 uppercase tracking-wider">
-                <span class="w-1.5 h-1.5 rounded-full bg-red-400"></span>
-                <span>Studio Workspace Access • 5 GB Free</span>
+            <div class="flex items-center justify-between gap-2.5">
+              <div class="inline-flex items-center gap-1.5 sm:gap-2 px-2 sm:px-2.5 py-1 rounded-md bg-red-500/12 border border-red-400/30 text-[9px] sm:text-[10px] font-mono-code text-red-300 uppercase tracking-wider">
+                <span class="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0"></span>
+                <span class="truncate">Studio Workspace Access • 5 GB Free</span>
               </div>
               <img
                 data-appex-logo="mark"
                 src="/assets/appex-logo.webp"
                 alt="Appex Mark"
-                class="w-8 h-8 object-contain opacity-90"
+                class="w-7 h-7 sm:w-8 sm:h-8 object-contain opacity-90 shrink-0"
               />
             </div>
 
             <div>
-              <h1 class="text-2xl sm:text-3xl font-semibold text-white tracking-tight leading-snug">
+              <h1 class="text-xl sm:text-2xl md:text-3xl font-semibold text-white tracking-tight leading-snug">
                 Deliver client media with studio precision.
               </h1>
-              <p class="text-xs sm:text-sm text-slate-300 leading-relaxed mt-2.5">
+              <p class="text-xs sm:text-sm text-slate-300 leading-relaxed mt-2 sm:mt-2.5">
                 Every Google login includes <strong class="text-white font-semibold">5.0 GB Free Cloud Storage</strong>. Store high-resolution images, 4K video cuts, and project documents in structured folders and share secure client review links.
               </p>
             </div>
@@ -560,7 +561,7 @@ function renderGoogleLoginScreen() {
               <button
                 id="btn-google-signin"
                 type="button"
-                class="w-full bg-white hover:bg-slate-100 text-slate-950 font-semibold py-3.5 px-5 rounded-xl flex items-center justify-center gap-3 shadow-[0_10px_25px_-5px_rgba(255,255,255,0.2)] transition transform active:scale-[0.99]"
+                class="w-full bg-white hover:bg-slate-100 text-slate-950 font-semibold py-3 sm:py-3.5 px-4 sm:px-5 rounded-xl flex items-center justify-center gap-3 shadow-[0_10px_25px_-5px_rgba(255,255,255,0.2)] transition transform active:scale-[0.99]"
               >
                 ${GOOGLE_LOGO_SVG}
                 <span class="text-sm">Continue with Google</span>
@@ -570,8 +571,8 @@ function renderGoogleLoginScreen() {
         </div>
 
         <!-- 3. Bottom Footer — Pinned at the very bottom of the screen -->
-        <footer class="relative z-10 w-full px-7 py-4 border-t border-white/[0.1] bg-black/20 backdrop-blur-md flex flex-wrap items-center justify-between gap-2 text-xs">
-          <div class="flex items-center gap-2 text-slate-300">
+        <footer class="relative z-10 w-full px-4 sm:px-7 py-3.5 sm:py-4 border-t border-white/[0.1] bg-black/20 backdrop-blur-md flex flex-wrap items-center justify-between gap-2 text-[11px] sm:text-xs">
+          <div class="flex items-center gap-1.5 sm:gap-2 text-slate-300">
             <span class="font-medium">© Appex Studios</span>
             <span class="text-slate-600">•</span>
             <span class="text-slate-400">
@@ -588,7 +589,7 @@ function renderGoogleLoginScreen() {
             href="https://appexproductions.com"
             target="_blank"
             rel="noopener noreferrer"
-            class="font-mono-code text-[11px] text-slate-400 hover:text-white transition inline-flex items-center gap-1"
+            class="font-mono-code text-[10px] sm:text-[11px] text-slate-400 hover:text-white transition inline-flex items-center gap-1"
           >
             <span>appexproductions.com</span>
             <i data-lucide="arrow-up-right" class="w-3 h-3"></i>
@@ -598,8 +599,8 @@ function renderGoogleLoginScreen() {
       </div>
 
       <!-- RIGHT SIDE: FULL-VIEWPORT FRAMED STUDIO PHOTOGRAPHY SHOWCASE -->
-      <div class="lg:col-span-7 xl:col-span-7 h-[500px] lg:h-screen p-4 sm:p-6 lg:p-7 flex items-center justify-center relative">
-        <div class="relative w-full h-full rounded-3xl overflow-hidden border border-white/[0.14] shadow-2xl flex flex-col justify-between p-6 sm:p-8">
+      <div class="lg:col-span-7 xl:col-span-7 h-[360px] sm:h-[440px] lg:h-screen p-3 sm:p-6 lg:p-7 flex items-center justify-center relative">
+        <div class="relative w-full h-full rounded-2xl sm:rounded-3xl overflow-hidden border border-white/[0.14] shadow-2xl flex flex-col justify-between p-4 sm:p-8">
           <!-- Generated Studio Background Image -->
           <img
             src="/assets/appex-studio-hero.jpg"
@@ -607,30 +608,30 @@ function renderGoogleLoginScreen() {
             class="absolute inset-0 w-full h-full object-cover object-center"
           />
           <!-- Balanced Vignette Gradients -->
-          <div class="absolute inset-0 bg-gradient-to-t from-[#06080c]/95 via-[#06080c]/20 to-[#06080c]/45"></div>
+          <div class="absolute inset-0 bg-gradient-to-t from-[#06080c]/95 via-[#06080c]/25 to-[#06080c]/45"></div>
 
           <!-- Top Badge Inside Showcase -->
-          <div class="relative z-10 flex items-center justify-between gap-4 w-full">
-            <div class="glass-panel px-3.5 py-1.5 rounded-full text-[11px] font-mono-code text-slate-200 inline-flex items-center gap-2">
-              <span class="w-2 h-2 rounded-full bg-red-500"></span>
-              <span>APPEX STUDIOS • CREATIVE MEDIA WORKSPACE</span>
+          <div class="relative z-10 flex items-center justify-between gap-3 w-full">
+            <div class="glass-panel px-3 py-1 sm:px-3.5 sm:py-1.5 rounded-full text-[10px] sm:text-[11px] font-mono-code text-slate-200 inline-flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-red-500 shrink-0"></span>
+              <span class="truncate">APPEX STUDIOS • CREATIVE MEDIA WORKSPACE</span>
             </div>
           </div>
 
           <!-- Bottom Studio Caption Card (No Demo Links) -->
           <div class="relative z-10 w-full">
-            <div class="glass-panel rounded-2xl p-5 sm:p-6 border border-white/[0.15] backdrop-blur-xl space-y-3">
-              <div class="text-[10px] font-mono-code uppercase tracking-widest text-red-300">
+            <div class="glass-panel rounded-2xl p-4 sm:p-6 border border-white/[0.15] backdrop-blur-xl space-y-2 sm:space-y-3">
+              <div class="text-[9px] sm:text-[10px] font-mono-code uppercase tracking-widest text-red-300">
                 UNIFIED STORAGE & CLIENT DELIVERY
               </div>
-              <div class="text-lg font-semibold text-white">
+              <div class="text-sm sm:text-lg font-semibold text-white leading-snug">
                 Built for Photographers, Filmmakers & Creative Agencies
               </div>
-              <div class="text-xs text-slate-300 max-w-2xl leading-relaxed">
+              <div class="text-[11px] sm:text-xs text-slate-300 max-w-2xl leading-relaxed line-clamp-2 sm:line-clamp-none">
                 Upload project folders, organize high-resolution stills, video masters, and documents, and share password-protected or open client links with instant approval tracking.
               </div>
 
-              <div class="pt-3 border-t border-white/[0.1] flex flex-wrap items-center gap-5 text-xs font-mono-code text-slate-300">
+              <div class="pt-2.5 sm:pt-3 border-t border-white/[0.1] flex flex-wrap items-center gap-3 sm:gap-5 text-[10px] sm:text-xs font-mono-code text-slate-300">
                 <span class="inline-flex items-center gap-1.5">
                   <i data-lucide="image" class="w-3.5 h-3.5 text-amber-400"></i>
                   High-Res Images
@@ -858,13 +859,22 @@ function renderDashboard() {
     .toUpperCase();
 
   rootEl.innerHTML = `
-    <div id="dashboard-dropzone" class="min-h-screen flex flex-col lg:flex-row">
-      <!-- LEFT GLASS SIDEBAR -->
-      <aside class="glass-sidebar w-full lg:w-64 shrink-0 flex flex-col justify-between p-4 lg:min-h-screen">
+    <div id="dashboard-dropzone" class="min-h-screen flex flex-col lg:flex-row relative">
+      <!-- MOBILE & TABLET SIDEBAR BACKDROP (< 1024px) -->
+      ${
+        state.mobileSidebarOpen
+          ? `<div id="mobile-sidebar-backdrop" class="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm lg:hidden"></div>`
+          : ""
+      }
+
+      <!-- LEFT GLASS SIDEBAR (Slide-over Drawer on <1024px, Pinned Sidebar on lg+) -->
+      <aside class="glass-sidebar fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] transform transition-transform duration-200 ease-out ${
+        state.mobileSidebarOpen ? "translate-x-0" : "-translate-x-full"
+      } lg:static lg:translate-x-0 lg:w-64 shrink-0 flex flex-col justify-between p-4 lg:min-h-screen overflow-y-auto">
         <div class="space-y-6">
           <!-- Brand Header -->
           <div class="flex items-center justify-between px-2 pt-1">
-            <div class="flex items-center gap-2.5">
+            <div class="flex items-center gap-2.5 min-w-0">
               <div class="w-9 h-9 rounded-xl bg-[#080a0f]/90 border border-white/20 flex items-center justify-center p-1 shadow-md shrink-0">
                 <img
                   data-appex-logo="mark"
@@ -873,14 +883,24 @@ function renderDashboard() {
                   class="w-full h-full object-contain"
                 />
               </div>
-              <div>
-                <div class="text-sm font-bold text-white tracking-wider leading-none">APPEX STUDIOS</div>
+              <div class="min-w-0">
+                <div class="text-sm font-bold text-white tracking-wider leading-none truncate">APPEX STUDIOS</div>
                 <div class="text-[10px] font-mono-code text-slate-400 mt-1 truncate max-w-[135px]">${escapeHtml(
                   state.user?.studioName || "Appex Studios"
                 )}</div>
               </div>
             </div>
-            <span class="px-2 py-0.5 rounded text-[10px] font-mono-code bg-white/[0.05] text-slate-300 border border-white/[0.08]">PRO</span>
+            <div class="flex items-center gap-1.5 shrink-0">
+              <span class="px-2 py-0.5 rounded text-[10px] font-mono-code bg-white/[0.05] text-slate-300 border border-white/[0.08]">PRO</span>
+              <button
+                id="btn-close-mobile-sidebar"
+                type="button"
+                class="lg:hidden glass-button p-1.5 rounded-lg text-slate-400 hover:text-white"
+                title="Close Navigation"
+              >
+                <i data-lucide="x" class="w-4 h-4"></i>
+              </button>
+            </div>
           </div>
 
           <!-- Primary Upload Action -->
@@ -1053,126 +1073,180 @@ function renderDashboard() {
       <!-- MAIN WORKSPACE AREA -->
       <div class="flex-1 flex flex-col min-w-0">
         <!-- Top Frosted Glass Header -->
-        <header class="glass-header sticky top-0 z-20 px-6 py-3.5 flex flex-wrap items-center justify-between gap-4">
-          <!-- Left: Breadcrumb Navigation -->
-          <div class="flex items-center gap-1.5 text-sm min-w-0 flex-wrap">
-            <button
-              id="breadcrumb-root"
-              class="px-2.5 py-1 rounded-lg transition flex items-center gap-1.5 ${
-                state.activeNav === "ALL" && !state.currentFolderId
-                  ? "bg-white/10 text-white font-medium border border-white/15"
-                  : "text-slate-400 hover:text-white hover:bg-white/5"
-              }"
-            >
-              <i data-lucide="layers" class="w-3.5 h-3.5 text-amber-400"></i>
-              <span>Studio Workspace</span>
-            </button>
+        <header class="glass-header sticky top-0 z-20 px-3.5 sm:px-6 py-3 flex flex-col gap-2.5">
+          <div class="flex flex-wrap items-center justify-between gap-2.5">
+            <!-- Left: Mobile Drawer Button + Breadcrumb Navigation -->
+            <div class="flex items-center gap-1.5 text-xs sm:text-sm min-w-0 flex-wrap">
+              <button
+                id="btn-mobile-sidebar-toggle"
+                type="button"
+                class="lg:hidden glass-button p-2 rounded-lg text-slate-200 hover:text-white inline-flex items-center justify-center shrink-0"
+                title="Open Studio Menu"
+              >
+                <i data-lucide="menu" class="w-4 h-4"></i>
+              </button>
 
-            ${
-              state.activeNav === "ALL"
-                ? breadcrumbs
-                    .map(
-                      (b, idx) => `
-                  <span class="text-slate-600">/</span>
-                  <button
-                    data-breadcrumb-folder="${escapeHtml(b.id)}"
-                    class="px-2.5 py-1 rounded-lg transition truncate max-w-[200px] ${
-                      idx === breadcrumbs.length - 1
-                        ? "bg-white/10 text-white font-medium border border-white/15"
-                        : "text-slate-400 hover:text-white hover:bg-white/5"
-                    }"
-                  >
-                    ${escapeHtml(b.name)}
-                  </button>
-                `
-                    )
-                    .join("")
-                : `<span class="text-slate-600">/</span>
-                   <span class="px-2.5 py-1 rounded-lg bg-white/10 text-white text-xs font-mono-code uppercase">${escapeHtml(
-                     state.activeNav
-                   )}</span>`
-            }
+              <div class="lg:hidden w-7 h-7 rounded-lg bg-[#080a0f]/90 border border-white/20 flex items-center justify-center p-1 shrink-0">
+                <img
+                  data-appex-logo="mark"
+                  src="/assets/appex-logo.webp"
+                  alt="Appex"
+                  class="w-full h-full object-contain"
+                />
+              </div>
+
+              <button
+                id="breadcrumb-root"
+                class="px-2 sm:px-2.5 py-1 rounded-lg transition flex items-center gap-1.5 ${
+                  state.activeNav === "ALL" && !state.currentFolderId
+                    ? "bg-white/10 text-white font-medium border border-white/15"
+                    : "text-slate-400 hover:text-white hover:bg-white/5"
+                }"
+              >
+                <i data-lucide="layers" class="w-3.5 h-3.5 text-amber-400 shrink-0"></i>
+                <span class="truncate max-w-[120px] sm:max-w-none">Studio Workspace</span>
+              </button>
+
+              ${
+                state.activeNav === "ALL"
+                  ? breadcrumbs
+                      .map(
+                        (b, idx) => `
+                    <span class="text-slate-600">/</span>
+                    <button
+                      data-breadcrumb-folder="${escapeHtml(b.id)}"
+                      class="px-2 sm:px-2.5 py-1 rounded-lg transition truncate max-w-[125px] sm:max-w-[200px] ${
+                        idx === breadcrumbs.length - 1
+                          ? "bg-white/10 text-white font-medium border border-white/15"
+                          : "text-slate-400 hover:text-white hover:bg-white/5"
+                      }"
+                    >
+                      ${escapeHtml(b.name)}
+                    </button>
+                  `
+                      )
+                      .join("")
+                  : `<span class="text-slate-600">/</span>
+                     <span class="px-2 sm:px-2.5 py-1 rounded-lg bg-white/10 text-white text-[11px] sm:text-xs font-mono-code uppercase">${escapeHtml(
+                       state.activeNav
+                     )}</span>`
+              }
+            </div>
+
+            <!-- Right: Search + View Controls + Folder & Share Actions -->
+            <div class="flex items-center gap-2 flex-wrap w-full sm:w-auto justify-between sm:justify-end">
+              <div class="relative flex-1 sm:flex-initial min-w-[140px]">
+                <i data-lucide="search" class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2"></i>
+                <input
+                  id="workspace-search-input"
+                  type="text"
+                  value="${escapeHtml(state.searchQuery)}"
+                  placeholder="Search files or folders…"
+                  class="glass-input pl-8 pr-3 py-1.5 rounded-lg text-xs w-full sm:w-52 md:w-60"
+                />
+              </div>
+
+              <!-- Grid vs List Toggle -->
+              <div class="flex items-center bg-white/[0.04] p-0.5 rounded-lg border border-white/[0.08] shrink-0">
+                <button
+                  data-view-mode="grid"
+                  class="p-1.5 rounded-md transition ${
+                    state.viewMode === "grid"
+                      ? "bg-white/15 text-white"
+                      : "text-slate-400 hover:text-white"
+                  }"
+                  title="Grid View"
+                >
+                  <i data-lucide="grid" class="w-3.5 h-3.5"></i>
+                </button>
+                <button
+                  data-view-mode="table"
+                  class="p-1.5 rounded-md transition ${
+                    state.viewMode === "table"
+                      ? "bg-white/15 text-white"
+                      : "text-slate-400 hover:text-white"
+                  }"
+                  title="Table List View"
+                >
+                  <i data-lucide="list" class="w-3.5 h-3.5"></i>
+                </button>
+              </div>
+
+              <button
+                id="header-new-folder-btn"
+                class="glass-button px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium inline-flex items-center gap-1.5 shrink-0"
+                title="New Folder"
+              >
+                <i data-lucide="folder-plus" class="w-3.5 h-3.5 text-amber-400"></i>
+                <span class="hidden xs:inline sm:inline">New Folder</span>
+              </button>
+
+              <button
+                id="header-upload-folder-btn"
+                class="glass-button px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium inline-flex items-center gap-1.5 shrink-0"
+                title="Upload Folder"
+              >
+                <i data-lucide="folder-up" class="w-3.5 h-3.5 text-sky-400"></i>
+                <span class="hidden sm:inline">Upload Folder</span>
+              </button>
+
+              ${
+                state.currentFolderId
+                  ? `<button
+                      id="header-share-current-folder"
+                      class="glass-button px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium text-amber-300 border-amber-500/30 inline-flex items-center gap-1.5 shrink-0"
+                    >
+                      <i data-lucide="share-2" class="w-3.5 h-3.5"></i>
+                      <span>Share Folder</span>
+                    </button>`
+                  : ""
+              }
+
+              <button
+                id="header-upload-btn"
+                class="btn-studio-primary px-3 sm:px-3.5 py-1.5 rounded-lg text-xs inline-flex items-center gap-1.5 shrink-0"
+              >
+                <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                <span>Upload Files</span>
+              </button>
+            </div>
           </div>
 
-          <!-- Right: Search + View Controls + Folder & Share Actions -->
-          <div class="flex items-center gap-2.5 flex-wrap">
-            <div class="relative">
-              <i data-lucide="search" class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2"></i>
-              <input
-                id="workspace-search-input"
-                type="text"
-                value="${escapeHtml(state.searchQuery)}"
-                placeholder="Search files or folders…"
-                class="glass-input pl-8 pr-3 py-1.5 rounded-lg text-xs w-48 sm:w-60"
-              />
-            </div>
-
-            <!-- Grid vs List Toggle -->
-            <div class="flex items-center bg-white/[0.04] p-0.5 rounded-lg border border-white/[0.08]">
+          <!-- Mobile & Tablet Quick-Filter Pill Strip (< 1024px) -->
+          <div class="lg:hidden flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-1 pb-0.5 border-t border-white/[0.06]">
+            ${[
+              { id: "ALL", label: "All", icon: "folder-kanban" },
+              { id: "IMAGE", label: "Images", icon: "image" },
+              { id: "VIDEO", label: "Videos", icon: "film" },
+              { id: "DOCUMENT", label: "Docs", icon: "file-text" },
+              { id: "SHARES", label: "Shares", icon: "link-2" },
+              { id: "REVIEWS", label: "Approvals", icon: "check-circle-2" },
+              { id: "STARRED", label: "Starred", icon: "star" },
+              { id: "TRASH", label: "Trash", icon: "trash-2" },
+            ]
+              .map(
+                (item) => `
               <button
-                data-view-mode="grid"
-                class="p-1.5 rounded-md transition ${
-                  state.viewMode === "grid"
-                    ? "bg-white/15 text-white"
-                    : "text-slate-400 hover:text-white"
+                data-nav-item="${item.id}"
+                class="px-2.5 py-1 rounded-lg text-[11px] font-medium inline-flex items-center gap-1.5 shrink-0 transition ${
+                  state.activeNav === item.id
+                    ? "bg-white/15 text-white border border-white/20"
+                    : "text-slate-400 hover:text-white bg-white/[0.03] border border-transparent"
                 }"
-                title="Grid View"
               >
-                <i data-lucide="grid" class="w-3.5 h-3.5"></i>
+                <i data-lucide="${item.icon}" class="w-3 h-3 ${
+                  state.activeNav === item.id ? "text-amber-400" : "text-slate-400"
+                }"></i>
+                <span>${item.label}</span>
               </button>
-              <button
-                data-view-mode="table"
-                class="p-1.5 rounded-md transition ${
-                  state.viewMode === "table"
-                    ? "bg-white/15 text-white"
-                    : "text-slate-400 hover:text-white"
-                }"
-                title="Table List View"
-              >
-                <i data-lucide="list" class="w-3.5 h-3.5"></i>
-              </button>
-            </div>
-
-            <button
-              id="header-new-folder-btn"
-              class="glass-button px-3 py-1.5 rounded-lg text-xs font-medium inline-flex items-center gap-1.5"
-            >
-              <i data-lucide="folder-plus" class="w-3.5 h-3.5 text-amber-400"></i>
-              <span>New Folder</span>
-            </button>
-
-            <button
-              id="header-upload-folder-btn"
-              class="glass-button px-3 py-1.5 rounded-lg text-xs font-medium inline-flex items-center gap-1.5"
-            >
-              <i data-lucide="folder-up" class="w-3.5 h-3.5 text-sky-400"></i>
-              <span>Upload Folder</span>
-            </button>
-
-            ${
-              state.currentFolderId
-                ? `<button
-                    id="header-share-current-folder"
-                    class="glass-button px-3 py-1.5 rounded-lg text-xs font-medium text-amber-300 border-amber-500/30 inline-flex items-center gap-1.5"
-                  >
-                    <i data-lucide="share-2" class="w-3.5 h-3.5"></i>
-                    <span>Share Folder with Client</span>
-                  </button>`
-                : ""
-            }
-
-            <button
-              id="header-upload-btn"
-              class="btn-studio-primary px-3.5 py-1.5 rounded-lg text-xs inline-flex items-center gap-1.5"
-            >
-              <i data-lucide="plus" class="w-3.5 h-3.5"></i>
-              <span>Upload Files</span>
-            </button>
+            `
+              )
+              .join("")}
           </div>
         </header>
 
         <!-- Main Explorer Body -->
-        <main class="flex-1 p-6 space-y-8 animate-view">
+        <main class="flex-1 p-3.5 sm:p-6 space-y-6 sm:space-y-8 animate-view">
           ${
             state.activeNav === "SHARES"
               ? renderSharesManagementSection()
@@ -1739,91 +1813,93 @@ function renderFilesGridView(files) {
 function renderFilesTableView(files) {
   return `
     <div class="glass-panel rounded-2xl overflow-hidden">
-      <table class="w-full text-left border-collapse">
-        <thead>
-          <tr class="border-b border-white/[0.08] text-[11px] font-mono-code uppercase text-slate-400">
-            <th class="py-3 px-4">Deliverable Name</th>
-            <th class="py-3 px-4 hidden sm:table-cell">Category</th>
-            <th class="py-3 px-4 hidden md:table-cell">Client Status</th>
-            <th class="py-3 px-4 hidden lg:table-cell">Size</th>
-            <th class="py-3 px-4 text-right">Actions</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-white/[0.06] text-xs">
-          ${files
-            .map((file) => {
-              const isUploading =
-                file.uploadStatus === "uploading" || file.uploadStatus === "complete";
-              const pct = isUploading
-                ? Math.min(100, Math.max(0, Number(file.uploadProgress) || 0))
-                : 100;
-              const isComplete = pct >= 100 || file.uploadStatus === "complete";
-
-              return `
-            <tr class="hover:bg-white/[0.03] transition">
-              <td class="py-3 px-4">
-                <div
-                  data-preview-file="${escapeHtml(file.id)}"
-                  class="font-medium text-white cursor-pointer hover:text-amber-300 truncate max-w-xs"
-                >
-                  ${escapeHtml(file.name)}
-                </div>
-                <div class="text-[11px] text-slate-500 font-mono-code">${escapeHtml(
-                  file.metaLabel || ""
-                )}</div>
-                <div
-                  data-card-upload-wrap="${escapeHtml(file.id)}"
-                  class="mt-1.5 max-w-xs space-y-1 ${isUploading ? "" : "hidden"}"
-                >
-                  <div class="flex items-center justify-between text-[10px] font-mono-code">
-                    <span class="text-slate-400">${
-                      isComplete ? "Uploaded" : "Uploading…"
-                    }</span>
-                    <span data-card-upload-pct="${escapeHtml(file.id)}" class="${
-                isComplete ? "text-emerald-300" : "text-amber-300"
-              }">${pct}%</span>
-                  </div>
-                  <div class="w-full h-1.5 rounded-full bg-white/10 overflow-hidden">
-                    <div
-                      data-card-upload-bar="${escapeHtml(file.id)}"
-                      class="h-full rounded-full transition-all duration-150 ${
-                        isComplete ? "bg-emerald-400" : "bg-amber-400"
-                      }"
-                      style="width: ${pct}%"
-                    ></div>
-                  </div>
-                </div>
-              </td>
-              <td class="py-3 px-4 hidden sm:table-cell">${renderCategoryBadge(
-                file.category
-              )}</td>
-              <td class="py-3 px-4 hidden md:table-cell">${renderApprovalBadge(
-                file.approvalStatus
-              )}</td>
-              <td class="py-3 px-4 hidden lg:table-cell font-mono-code text-slate-400">${formatBytes(
-                file.sizeBytes
-              )}</td>
-              <td class="py-3 px-4 text-right space-x-1.5">
-                <button
-                  data-share-file="${escapeHtml(file.id)}"
-                  class="glass-button px-2.5 py-1 rounded text-[11px] text-amber-300 inline-flex items-center gap-1"
-                >
-                  <i data-lucide="share-2" class="w-3 h-3"></i>
-                  <span>Share</span>
-                </button>
-                <button
-                  data-preview-file="${escapeHtml(file.id)}"
-                  class="glass-button px-2.5 py-1 rounded text-[11px] text-slate-200"
-                >
-                  Preview
-                </button>
-              </td>
+      <div class="overflow-x-auto w-full">
+        <table class="w-full text-left border-collapse">
+          <thead>
+            <tr class="border-b border-white/[0.08] text-[11px] font-mono-code uppercase text-slate-400">
+              <th class="py-3 px-3 sm:px-4">Deliverable Name</th>
+              <th class="py-3 px-4 hidden sm:table-cell">Category</th>
+              <th class="py-3 px-4 hidden md:table-cell">Client Status</th>
+              <th class="py-3 px-4 hidden lg:table-cell">Size</th>
+              <th class="py-3 px-3 sm:px-4 text-right">Actions</th>
             </tr>
-          `;
-            })
-            .join("")}
-        </tbody>
-      </table>
+          </thead>
+          <tbody class="divide-y divide-white/[0.06] text-xs">
+            ${files
+              .map((file) => {
+                const isUploading =
+                  file.uploadStatus === "uploading" || file.uploadStatus === "complete";
+                const pct = isUploading
+                  ? Math.min(100, Math.max(0, Number(file.uploadProgress) || 0))
+                  : 100;
+                const isComplete = pct >= 100 || file.uploadStatus === "complete";
+
+                return `
+              <tr class="hover:bg-white/[0.03] transition">
+                <td class="py-3 px-3 sm:px-4 max-w-[160px] sm:max-w-xs">
+                  <div
+                    data-preview-file="${escapeHtml(file.id)}"
+                    class="font-medium text-white cursor-pointer hover:text-amber-300 truncate"
+                  >
+                    ${escapeHtml(file.name)}
+                  </div>
+                  <div class="text-[11px] text-slate-500 font-mono-code truncate">${escapeHtml(
+                    file.metaLabel || ""
+                  )}</div>
+                  <div
+                    data-card-upload-wrap="${escapeHtml(file.id)}"
+                    class="mt-1.5 max-w-xs space-y-1 ${isUploading ? "" : "hidden"}"
+                  >
+                    <div class="flex items-center justify-between text-[10px] font-mono-code">
+                      <span class="text-slate-400">${
+                        isComplete ? "Uploaded" : "Uploading…"
+                      }</span>
+                      <span data-card-upload-pct="${escapeHtml(file.id)}" class="${
+                  isComplete ? "text-emerald-300" : "text-amber-300"
+                }">${pct}%</span>
+                    </div>
+                    <div class="w-full h-1.5 rounded-full bg-white/10 overflow-hidden">
+                      <div
+                        data-card-upload-bar="${escapeHtml(file.id)}"
+                        class="h-full rounded-full transition-all duration-150 ${
+                          isComplete ? "bg-emerald-400" : "bg-amber-400"
+                        }"
+                        style="width: ${pct}%"
+                      ></div>
+                    </div>
+                  </div>
+                </td>
+                <td class="py-3 px-4 hidden sm:table-cell">${renderCategoryBadge(
+                  file.category
+                )}</td>
+                <td class="py-3 px-4 hidden md:table-cell">${renderApprovalBadge(
+                  file.approvalStatus
+                )}</td>
+                <td class="py-3 px-4 hidden lg:table-cell font-mono-code text-slate-400">${formatBytes(
+                  file.sizeBytes
+                )}</td>
+                <td class="py-3 px-3 sm:px-4 text-right whitespace-nowrap space-x-1 sm:space-x-1.5">
+                  <button
+                    data-share-file="${escapeHtml(file.id)}"
+                    class="glass-button px-2 sm:px-2.5 py-1 rounded text-[11px] text-amber-300 inline-flex items-center gap-1"
+                  >
+                    <i data-lucide="share-2" class="w-3 h-3"></i>
+                    <span class="hidden xs:inline sm:inline">Share</span>
+                  </button>
+                  <button
+                    data-preview-file="${escapeHtml(file.id)}"
+                    class="glass-button px-2 sm:px-2.5 py-1 rounded text-[11px] text-slate-200"
+                  >
+                    Preview
+                  </button>
+                </td>
+              </tr>
+            `;
+              })
+              .join("")}
+          </tbody>
+        </table>
+      </div>
     </div>
   `;
 }
@@ -1838,7 +1914,7 @@ function renderSharesManagementSection() {
     <div class="space-y-6">
       <div class="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 class="text-xl font-semibold text-white">Client Share Links & Delivery Portals</h1>
+          <h1 class="text-lg sm:text-xl font-semibold text-white">Client Share Links & Delivery Portals</h1>
           <p class="text-xs text-slate-400 mt-1">
             Every shared folder or file link below opens a clean, distraction-free Client Review Portal with download and approval controls.
           </p>
@@ -1848,20 +1924,20 @@ function renderSharesManagementSection() {
       <div class="grid grid-cols-1 gap-4">
         ${
           userShares.length === 0
-            ? `<div class="glass-panel rounded-2xl p-10 text-center text-sm text-slate-400">
+            ? `<div class="glass-panel rounded-2xl p-8 sm:p-10 text-center text-sm text-slate-400">
                 No client share links created yet. Click "Share Folder Link" or "Share Link" on any item in your workspace.
               </div>`
             : userShares
                 .map((s) => {
                   const shareUrl = `${origin}/share/${s.token}`;
                   return `
-                    <div class="glass-panel rounded-2xl p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-5">
-                      <div class="space-y-2 max-w-2xl">
+                    <div class="glass-panel rounded-2xl p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 sm:gap-5">
+                      <div class="space-y-2 max-w-2xl min-w-0">
                         <div class="flex flex-wrap items-center gap-2">
                           <span class="px-2 py-0.5 rounded text-[10px] font-mono-code uppercase bg-amber-500/15 text-amber-300 border border-amber-500/25">
                             ${s.resourceType === "FOLDER" ? "FOLDER PORTAL" : "FILE LINK"}
                           </span>
-                          <span class="text-xs font-mono-code text-slate-400">Target: ${escapeHtml(
+                          <span class="text-xs font-mono-code text-slate-400 truncate max-w-full">Target: ${escapeHtml(
                             s.resourceName
                           )}</span>
                           ${
@@ -1871,7 +1947,7 @@ function renderSharesManagementSection() {
                           }
                         </div>
 
-                        <div class="text-base font-semibold text-white">${escapeHtml(
+                        <div class="text-sm sm:text-base font-semibold text-white break-words">${escapeHtml(
                           s.title
                         )}</div>
                         ${
@@ -1882,7 +1958,7 @@ function renderSharesManagementSection() {
                             : ""
                         }
 
-                        <div class="flex flex-wrap items-center gap-4 pt-1 text-xs font-mono-code text-slate-400">
+                        <div class="flex flex-wrap items-center gap-3 sm:gap-4 pt-1 text-xs font-mono-code text-slate-400">
                           <span>Views: <strong class="text-white">${
                             s.viewCount || 0
                           }</strong></span>
@@ -1895,27 +1971,27 @@ function renderSharesManagementSection() {
                         </div>
                       </div>
 
-                      <div class="flex flex-wrap items-center gap-2.5 shrink-0">
-                        <div class="glass-input px-3 py-2 rounded-lg text-xs font-mono-code text-slate-300 max-w-[260px] truncate">
+                      <div class="flex flex-wrap items-center gap-2 w-full lg:w-auto shrink-0">
+                        <div class="glass-input px-3 py-2 rounded-lg text-xs font-mono-code text-slate-300 w-full sm:w-auto sm:max-w-[260px] truncate">
                           ${escapeHtml(shareUrl)}
                         </div>
                         <button
                           data-copy-share-url="${escapeHtml(shareUrl)}"
-                          class="btn-studio-primary px-3.5 py-2 rounded-lg text-xs inline-flex items-center gap-1.5"
+                          class="btn-studio-primary px-3.5 py-2 rounded-lg text-xs inline-flex items-center justify-center gap-1.5 flex-1 sm:flex-initial"
                         >
                           <i data-lucide="copy" class="w-3.5 h-3.5"></i>
                           <span>Copy Link</span>
                         </button>
                         <button
                           data-open-share-portal="${escapeHtml(s.token)}"
-                          class="glass-button px-3.5 py-2 rounded-lg text-xs font-medium text-amber-300 inline-flex items-center gap-1.5"
+                          class="glass-button px-3.5 py-2 rounded-lg text-xs font-medium text-amber-300 inline-flex items-center justify-center gap-1.5 flex-1 sm:flex-initial"
                         >
                           <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
                           <span>Open Client View</span>
                         </button>
                         <button
                           data-delete-share="${escapeHtml(s.id)}"
-                          class="glass-button p-2 rounded-lg text-slate-400 hover:text-rose-400"
+                          class="glass-button p-2 rounded-lg text-slate-400 hover:text-rose-400 shrink-0"
                           title="Revoke Share Link"
                         >
                           <i data-lucide="trash-2" class="w-4 h-4"></i>
@@ -1936,7 +2012,7 @@ function renderReviewsSection(reviewedFiles) {
   return `
     <div class="space-y-6">
       <div>
-        <h1 class="text-xl font-semibold text-white">Client Approvals & Revision Notes</h1>
+        <h1 class="text-lg sm:text-xl font-semibold text-white">Client Approvals & Revision Notes</h1>
         <p class="text-xs text-slate-400 mt-1">
           Real-time log of client sign-offs and revision requests submitted across your shared portals.
         </p>
@@ -1989,7 +2065,7 @@ function renderReviewsSection(reviewedFiles) {
 function renderNewFolderModal() {
   return `
     <div class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-      <div class="glass-modal w-full max-w-md rounded-2xl p-6 animate-modal">
+      <div class="glass-modal w-full max-w-md rounded-2xl p-5 sm:p-6 animate-modal">
         <div class="flex items-center justify-between mb-5">
           <h3 class="text-base font-semibold text-white">Create Studio Folder</h3>
           <button id="close-new-folder-modal" class="text-slate-400 hover:text-white">
@@ -2048,19 +2124,19 @@ function renderShareModal(target, createdShare) {
   if (createdShare) {
     const shareUrl = `${origin}/share/${createdShare.token}`;
     return `
-      <div class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-        <div class="glass-modal w-full max-w-lg rounded-2xl p-6 animate-modal space-y-5">
-          <div class="flex items-center justify-between">
+      <div class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
+        <div class="glass-modal w-full max-w-lg rounded-2xl p-5 sm:p-6 animate-modal space-y-5">
+          <div class="flex items-center justify-between gap-2">
             <div class="flex items-center gap-2.5">
-              <div class="w-8 h-8 rounded-lg bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+              <div class="w-8 h-8 rounded-lg bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
                 <i data-lucide="check" class="w-4 h-4"></i>
               </div>
               <div>
-                <h3 class="text-base font-semibold text-white">Client Portal Link Ready</h3>
+                <h3 class="text-sm sm:text-base font-semibold text-white">Client Portal Link Ready</h3>
                 <p class="text-xs text-slate-400">Send this link to your client for instant viewing & approval.</p>
               </div>
             </div>
-            <button id="close-share-modal" class="text-slate-400 hover:text-white">
+            <button id="close-share-modal" class="text-slate-400 hover:text-white shrink-0">
               <i data-lucide="x" class="w-4 h-4"></i>
             </button>
           </div>
@@ -2069,10 +2145,10 @@ function renderShareModal(target, createdShare) {
             <div class="text-xs font-mono-code text-amber-300 uppercase">${
               createdShare.resourceType === "FOLDER" ? "SHARED FOLDER LINK" : "SHARED FILE LINK"
             }</div>
-            <div class="text-sm font-semibold text-white">${escapeHtml(
+            <div class="text-sm font-semibold text-white break-words">${escapeHtml(
               createdShare.title
             )}</div>
-            <div class="flex items-center gap-2">
+            <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
               <input
                 id="created-share-url-input"
                 type="text"
@@ -2082,7 +2158,7 @@ function renderShareModal(target, createdShare) {
               />
               <button
                 id="btn-copy-created-share"
-                class="btn-studio-primary px-3.5 py-2 rounded-lg text-xs inline-flex items-center gap-1.5"
+                class="btn-studio-primary px-3.5 py-2 rounded-lg text-xs inline-flex items-center justify-center gap-1.5"
               >
                 <i data-lucide="copy" class="w-3.5 h-3.5"></i>
                 <span>Copy</span>
@@ -2090,7 +2166,7 @@ function renderShareModal(target, createdShare) {
             </div>
           </div>
 
-          <div class="flex items-center justify-between pt-2">
+          <div class="flex flex-wrap items-center justify-between gap-2 pt-2">
             <button
               id="btn-open-created-portal"
               class="glass-button px-4 py-2 rounded-lg text-xs font-medium text-amber-300 inline-flex items-center gap-2"
@@ -2106,18 +2182,18 @@ function renderShareModal(target, createdShare) {
   }
 
   return `
-    <div class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-      <div class="glass-modal w-full max-w-lg rounded-2xl p-6 animate-modal">
-        <div class="flex items-center justify-between mb-5 pb-3 border-b border-white/[0.08]">
-          <div>
+    <div class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+      <div class="glass-modal w-full max-w-lg rounded-2xl p-5 sm:p-6 animate-modal my-auto">
+        <div class="flex items-center justify-between mb-5 pb-3 border-b border-white/[0.08] gap-2">
+          <div class="min-w-0">
             <span class="text-[10px] font-mono-code uppercase tracking-wider text-amber-400">
               ${resourceType === "FOLDER" ? "Share Folder with Client" : "Share Deliverable File"}
             </span>
-            <h3 class="text-base font-semibold text-white mt-0.5">${escapeHtml(
+            <h3 class="text-sm sm:text-base font-semibold text-white mt-0.5 truncate">${escapeHtml(
               item.name
             )}</h3>
           </div>
-          <button id="close-share-modal" class="text-slate-400 hover:text-white">
+          <button id="close-share-modal" class="text-slate-400 hover:text-white shrink-0">
             <i data-lucide="x" class="w-4 h-4"></i>
           </button>
         </div>
@@ -2199,32 +2275,32 @@ function renderStudioPreviewModal(file) {
   const fileFeedback = state.feedback.filter((fb) => fb.fileId === file.id);
 
   return `
-    <div class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 lg:p-8">
-      <div class="glass-modal w-full max-w-6xl h-[85vh] rounded-2xl overflow-hidden flex flex-col lg:flex-row animate-modal">
+    <div class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 lg:p-8">
+      <div class="glass-modal w-full max-w-6xl h-[92dvh] lg:h-[85vh] rounded-2xl overflow-y-auto lg:overflow-hidden flex flex-col lg:flex-row animate-modal">
         <!-- Left Media Stage -->
-        <div class="flex-1 bg-slate-950/90 flex flex-col min-h-0 border-b lg:border-b-0 lg:border-r border-white/[0.08]">
-          <div class="px-5 py-3.5 border-b border-white/[0.08] flex items-center justify-between gap-4">
-            <div class="flex items-center gap-2.5 min-w-0">
+        <div class="flex-1 bg-slate-950/90 flex flex-col min-h-[260px] sm:min-h-[360px] lg:min-h-0 border-b lg:border-b-0 lg:border-r border-white/[0.08]">
+          <div class="px-3.5 sm:px-5 py-3 sm:py-3.5 border-b border-white/[0.08] flex flex-wrap items-center justify-between gap-2 sm:gap-4">
+            <div class="flex items-center gap-2 min-w-0">
               ${renderCategoryBadge(file.category)}
-              <span class="text-sm font-medium text-white truncate">${escapeHtml(
+              <span class="text-xs sm:text-sm font-medium text-white truncate max-w-[160px] sm:max-w-xs">${escapeHtml(
                 file.name
               )}</span>
             </div>
-            <div class="flex items-center gap-2">
+            <div class="flex items-center gap-1.5 sm:gap-2">
               <button
                 id="preview-share-file-btn"
-                class="glass-button px-3 py-1.5 rounded-lg text-xs font-medium text-amber-300 inline-flex items-center gap-1.5"
+                class="glass-button px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium text-amber-300 inline-flex items-center gap-1.5"
               >
                 <i data-lucide="share-2" class="w-3.5 h-3.5"></i>
-                <span>Share with Client</span>
+                <span class="hidden sm:inline">Share with Client</span>
               </button>
               <a
                 href="${escapeHtml(file.url)}"
                 download="${escapeHtml(file.name)}"
-                class="glass-button px-3 py-1.5 rounded-lg text-xs font-medium text-slate-200 inline-flex items-center gap-1.5"
+                class="glass-button px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium text-slate-200 inline-flex items-center gap-1.5"
               >
                 <i data-lucide="download" class="w-3.5 h-3.5"></i>
-                <span>Download</span>
+                <span class="hidden sm:inline">Download</span>
               </a>
               <button id="close-preview-modal" class="glass-button p-1.5 rounded-lg text-slate-400 hover:text-white">
                 <i data-lucide="x" class="w-4 h-4"></i>
@@ -2232,35 +2308,35 @@ function renderStudioPreviewModal(file) {
             </div>
           </div>
 
-          <div class="flex-1 flex items-center justify-center p-6 overflow-auto">
+          <div class="flex-1 flex items-center justify-center p-3 sm:p-6 overflow-auto min-h-[220px]">
             ${
               file.category === "IMAGE"
                 ? `<img src="${escapeHtml(file.url || file.posterUrl || "/sample-media/nordic-coast.svg")}" alt="${escapeHtml(
                     file.name
-                  )}" onerror="this.onerror=null;this.src='/sample-media/nordic-coast.svg';" class="max-w-full max-h-full object-contain rounded-lg shadow-2xl" />`
+                  )}" onerror="this.onerror=null;this.src='/sample-media/nordic-coast.svg';" class="max-w-full max-h-[55vh] lg:max-h-full object-contain rounded-lg shadow-2xl" />`
                 : file.category === "VIDEO"
                 ? (file.url || "").includes("studio-walkthrough.mp4")
                   ? `<div class="w-full max-w-3xl space-y-3">
                       <canvas id="studio-cinema-canvas" width="960" height="540" class="w-full rounded-xl border border-white/10 shadow-2xl bg-black"></canvas>
-                      <div class="glass-panel px-4 py-2.5 rounded-xl flex items-center gap-4">
+                      <div class="glass-panel px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl flex items-center gap-3 sm:gap-4">
                         <button id="studio-cinema-play" type="button" class="btn-studio-primary px-3 py-1 rounded text-xs">Pause</button>
                         <input id="studio-cinema-scrubber" type="range" min="0" max="100" value="0" class="flex-1 accent-amber-400 cursor-pointer" />
-                        <span id="studio-cinema-time" class="text-xs font-mono-code text-slate-300">00:00:00 / 00:12:00</span>
+                        <span id="studio-cinema-time" class="text-[11px] sm:text-xs font-mono-code text-slate-300">00:00:00 / 00:12:00</span>
                       </div>
                     </div>`
                   : `<video src="${escapeHtml(
                       file.url || ""
-                    )}" poster="${escapeHtml(file.posterUrl || "")}" controls autoplay class="max-w-full max-h-full rounded-xl border border-white/10 shadow-2xl"></video>`
+                    )}" poster="${escapeHtml(file.posterUrl || "")}" controls autoplay class="max-w-full max-h-[55vh] lg:max-h-full rounded-xl border border-white/10 shadow-2xl"></video>`
                 : `<iframe src="${escapeHtml(
                     file.url || ""
-                  )}" class="w-full h-full rounded-xl border border-white/10 bg-white"></iframe>`
+                  )}" class="w-full h-[50vh] lg:h-full rounded-xl border border-white/10 bg-white"></iframe>`
             }
           </div>
         </div>
 
         <!-- Right Deliverable Inspector & Client Feedback -->
         <div class="w-full lg:w-96 flex flex-col bg-slate-950/60 min-h-0">
-          <div class="p-5 border-b border-white/[0.08] space-y-3">
+          <div class="p-4 sm:p-5 border-b border-white/[0.08] space-y-3">
             <div class="flex items-center justify-between">
               <span class="text-xs font-mono-code uppercase text-slate-400">Client Review Status</span>
               ${renderApprovalBadge(file.approvalStatus)}
@@ -2277,7 +2353,7 @@ function renderStudioPreviewModal(file) {
             </div>
           </div>
 
-          <div class="flex-1 overflow-y-auto p-5 space-y-3">
+          <div class="flex-1 overflow-y-auto p-4 sm:p-5 space-y-3">
             <div class="text-xs font-mono-code uppercase tracking-wider text-slate-400">Client Revision Notes (${
               fileFeedback.length
             })</div>
@@ -2415,10 +2491,27 @@ function bindFirebaseConfigModalEvents(rerenderFn) {
 // DASHBOARD INTERACTION BINDINGS
 // ============================================================================
 function bindDashboardEvents() {
-  // Sidebar navigation
+  // Mobile & Tablet Drawer Toggle Controls
+  document.getElementById("btn-mobile-sidebar-toggle")?.addEventListener("click", () => {
+    state.mobileSidebarOpen = true;
+    renderDashboard();
+  });
+
+  document.getElementById("btn-close-mobile-sidebar")?.addEventListener("click", () => {
+    state.mobileSidebarOpen = false;
+    renderDashboard();
+  });
+
+  document.getElementById("mobile-sidebar-backdrop")?.addEventListener("click", () => {
+    state.mobileSidebarOpen = false;
+    renderDashboard();
+  });
+
+  // Sidebar & Quick-Filter navigation
   rootEl.querySelectorAll("[data-nav-item]").forEach((btn) => {
     btn.addEventListener("click", () => {
       state.activeNav = btn.getAttribute("data-nav-item");
+      state.mobileSidebarOpen = false;
       if (state.activeNav !== "ALL") {
         state.currentFolderId = null;
       }
@@ -2430,6 +2523,7 @@ function bindDashboardEvents() {
   document.getElementById("breadcrumb-root")?.addEventListener("click", () => {
     state.activeNav = "ALL";
     state.currentFolderId = null;
+    state.mobileSidebarOpen = false;
     renderDashboard();
   });
 
@@ -2437,6 +2531,7 @@ function bindDashboardEvents() {
     btn.addEventListener("click", () => {
       state.activeNav = "ALL";
       state.currentFolderId = btn.getAttribute("data-breadcrumb-folder");
+      state.mobileSidebarOpen = false;
       renderDashboard();
     });
   });
@@ -2468,6 +2563,7 @@ function bindDashboardEvents() {
 
   // Sign Out
   document.getElementById("btn-signout-google")?.addEventListener("click", async () => {
+    state.mobileSidebarOpen = false;
     await signOutGoogleUser();
     state.user = null;
     showToast("Signed out of Google Workspace", "info");
@@ -2483,6 +2579,7 @@ function bindDashboardEvents() {
 
   // Trigger File Upload Picker
   const triggerUploadPicker = () => {
+    state.mobileSidebarOpen = false;
     if (globalFileInput) {
       globalFileInput.value = "";
       globalFileInput.click();

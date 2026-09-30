@@ -253,3 +253,46 @@ body::before {
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.26);
 }
+
+/* Hide scrollbars on horizontal touch filter strips while keeping smooth scroll */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Cross-device touch & viewport refinements */
+button,
+a,
+input,
+select,
+textarea,
+[role="button"] {
+  touch-action: manipulation;
+}
+
+@supports (min-height: 100dvh) {
+  html,
+  body,
+  #app-root {
+    min-height: 100dvh;
+  }
+}
+
+@media (max-width: 640px) {
+  /* Prevent iOS Safari auto-zoom on input focus while keeping compact visual hierarchy */
+  input.glass-input,
+  select.glass-input,
+  textarea.glass-input {
+    font-size: 16px !important;
+  }
+
+  .glass-card:hover {
+    transform: none;
+  }
+}
+

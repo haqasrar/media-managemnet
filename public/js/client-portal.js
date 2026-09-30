@@ -8,8 +8,8 @@ import {
   renderCategoryBadge,
   mountSampleCinemaCanvas,
   enhanceAppexLogos,
-} from "./ui-helpers.js?v=11";
-import { hydrateMediaFilesFromVault } from "./firebase-client.js?v=11";
+} from "./ui-helpers.js?v=12";
+import { hydrateMediaFilesFromVault } from "./firebase-client.js?v=12";
 
 export function createClientPortalController({ rootEl, token, showToast }) {
   // Strictly lock this browser tab to the Client Portal so refreshing never opens the Studio Account

@@ -69,6 +69,29 @@ export function enhanceAppexLogos() {
     document.querySelectorAll('img[data-appex-logo="full"]').forEach((img) => {
       if (img.src !== data.fullUrl) img.src = data.fullUrl;
     });
+    if (data.faviconUrl && document.head) {
+      let iconEl = document.getElementById("appex-favicon") || document.querySelector('link[rel="icon"]');
+      if (!iconEl) {
+        iconEl = document.createElement("link");
+        iconEl.id = "appex-favicon";
+        iconEl.rel = "icon";
+        document.head.appendChild(iconEl);
+      }
+      iconEl.type = "image/png";
+      if (iconEl.href !== data.faviconUrl) iconEl.href = data.faviconUrl;
+
+      let shortcutEl =
+        document.getElementById("appex-shortcut-icon") ||
+        document.querySelector('link[rel="shortcut icon"]');
+      if (!shortcutEl) {
+        shortcutEl = document.createElement("link");
+        shortcutEl.id = "appex-shortcut-icon";
+        shortcutEl.rel = "shortcut icon";
+        document.head.appendChild(shortcutEl);
+      }
+      shortcutEl.type = "image/png";
+      if (shortcutEl.href !== data.faviconUrl) shortcutEl.href = data.faviconUrl;
+    }
   };
 
   if (cachedLogoData) {
@@ -128,9 +151,28 @@ export function enhanceAppexLogos() {
           markCanvas.height = mh;
           markCanvas.getContext("2d").drawImage(canvas, mx, my, mw, mh, 0, 0, mw, mh);
 
+          // 64x64 Square Browser Tab Favicon with sleek studio badge background
+          const favCanvas = document.createElement("canvas");
+          favCanvas.width = 64;
+          favCanvas.height = 64;
+          const fctx = favCanvas.getContext("2d");
+          fctx.fillStyle = "#080a0f";
+          fctx.beginPath();
+          if (typeof fctx.roundRect === "function") {
+            fctx.roundRect(0, 0, 64, 64, 14);
+          } else {
+            fctx.rect(0, 0, 64, 64);
+          }
+          fctx.fill();
+          fctx.strokeStyle = "rgba(255,255,255,0.18)";
+          fctx.lineWidth = 2;
+          fctx.stroke();
+          fctx.drawImage(markCanvas, 0, 0, mw, mh, 5, 7, 54, 50);
+
           cachedLogoData = {
             fullUrl: fullCanvas.toDataURL("image/png"),
             markUrl: markCanvas.toDataURL("image/png"),
+            faviconUrl: favCanvas.toDataURL("image/png"),
           };
           resolve(cachedLogoData);
         } catch {

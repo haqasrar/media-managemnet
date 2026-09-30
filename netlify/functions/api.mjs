@@ -5,13 +5,35 @@ import crypto from "node:crypto";
 const FIVE_GB_BYTES = 5 * 1024 * 1024 * 1024;
 const TMP_DB_FILE = "/tmp/appex-studios-db.json";
 
+const LEGACY_SAMPLE_FILE_IDS = new Set(["file-1", "file-2", "file-3", "file-4"]);
+const LEGACY_SAMPLE_FOLDER_IDS = new Set(["fld-1", "fld-2", "fld-3"]);
+const LEGACY_SAMPLE_SHARE_IDS = new Set(["shr-sample-folder-1"]);
+const LEGACY_SAMPLE_FEEDBACK_IDS = new Set(["fb-1", "fb-2"]);
+
+function sanitizeDb(parsed = {}) {
+  const files = (Array.isArray(parsed.files) ? parsed.files : []).filter(
+    (f) => f && f.id && !LEGACY_SAMPLE_FILE_IDS.has(f.id)
+  );
+  const usedFolders = new Set(files.map((f) => f.folderId).filter(Boolean));
+  const folders = (Array.isArray(parsed.folders) ? parsed.folders : []).filter(
+    (fld) => fld && fld.id && (!LEGACY_SAMPLE_FOLDER_IDS.has(fld.id) || usedFolders.has(fld.id))
+  );
+  const shares = (Array.isArray(parsed.shares) ? parsed.shares : []).filter(
+    (s) => s && s.id && !LEGACY_SAMPLE_SHARE_IDS.has(s.id)
+  );
+  const feedback = (Array.isArray(parsed.feedback) ? parsed.feedback : []).filter(
+    (fb) => fb && fb.id && !LEGACY_SAMPLE_FEEDBACK_IDS.has(fb.id)
+  );
+  return { folders, files, shares, feedback };
+}
+
 function readDb() {
   try {
     if (fs.existsSync(TMP_DB_FILE)) {
       const raw = fs.readFileSync(TMP_DB_FILE, "utf8");
       const parsed = JSON.parse(raw);
       if (parsed && Array.isArray(parsed.folders) && Array.isArray(parsed.files)) {
-        return parsed;
+        return sanitizeDb(parsed);
       }
     }
   } catch {

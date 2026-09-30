@@ -10,7 +10,7 @@ import {
   uploadMediaFile,
   hydrateMediaFilesFromVault,
   isLiveSessionBlobUrl,
-} from "./firebase-client.js?v=11";
+} from "./firebase-client.js?v=12";
 import {
   formatBytes,
   formatDateShort,
@@ -22,8 +22,8 @@ import {
   renderCategoryBadge,
   mountSampleCinemaCanvas,
   enhanceAppexLogos,
-} from "./ui-helpers.js?v=11";
-import { createClientPortalController } from "./client-portal.js?v=11";
+} from "./ui-helpers.js?v=12";
+import { createClientPortalController } from "./client-portal.js?v=12";
 
 const rootEl = document.getElementById("app-root");
 const globalFileInput = document.getElementById("global-file-input");
@@ -31,6 +31,36 @@ const globalFolderInput = document.getElementById("global-folder-input");
 
 const FIVE_GB = 5 * 1024 * 1024 * 1024;
 const WORKSPACE_CACHE_KEY = "appex_workspace_cache_v1";
+const LEGACY_DEFAULT_OWNER_KEY = "appex_legacy_default_owner_v1";
+
+const LEGACY_SAMPLE_FILE_IDS = new Set(["file-1", "file-2", "file-3", "file-4"]);
+const LEGACY_SAMPLE_FOLDER_IDS = new Set(["fld-1", "fld-2", "fld-3"]);
+const LEGACY_SAMPLE_SHARE_IDS = new Set(["shr-sample-folder-1"]);
+const LEGACY_SAMPLE_FEEDBACK_IDS = new Set(["fb-1", "fb-2"]);
+
+function sanitizeWorkspaceCollections(raw = {}) {
+  const rawFiles = Array.isArray(raw.files) ? raw.files : [];
+  const files = rawFiles.filter((f) => f && f.id && !LEGACY_SAMPLE_FILE_IDS.has(f.id));
+  const usedFolderIds = new Set(files.map((f) => f.folderId).filter(Boolean));
+
+  const rawFolders = Array.isArray(raw.folders) ? raw.folders : [];
+  const folders = rawFolders.filter(
+    (fld) =>
+      fld &&
+      fld.id &&
+      (!LEGACY_SAMPLE_FOLDER_IDS.has(fld.id) || usedFolderIds.has(fld.id))
+  );
+
+  const rawShares = Array.isArray(raw.shares) ? raw.shares : [];
+  const shares = rawShares.filter((s) => s && s.id && !LEGACY_SAMPLE_SHARE_IDS.has(s.id));
+
+  const rawFeedback = Array.isArray(raw.feedback) ? raw.feedback : [];
+  const feedback = rawFeedback.filter(
+    (fb) => fb && fb.id && !LEGACY_SAMPLE_FEEDBACK_IDS.has(fb.id)
+  );
+
+  return { folders, files, shares, feedback };
+}
 
 /**
  * Strictly determines if the current browser tab is a Client Share Portal.
@@ -93,7 +123,7 @@ function loadWorkspaceCache() {
   try {
     const raw = localStorage.getItem(WORKSPACE_CACHE_KEY);
     if (!raw) return null;
-    return JSON.parse(raw);
+    return sanitizeWorkspaceCollections(JSON.parse(raw));
   } catch {
     return null;
   }
@@ -234,6 +264,112 @@ const state = {
   previewFile: null, // MediaFileItem
 };
 
+/**
+ * Per-Login 5.0 GB Free Workspace Isolation Helpers
+ * Every Google login gets its own independent 5.0 GB Free Cloud Storage vault.
+ */
+function getPrimaryUserOwnerId(user = state.user) {
+  if (!user) return "anonymous";
+  const email = (user.email || "").toLowerCase().trim();
+  if (email) return email;
+  return String(user.uid || "default").toLowerCase().trim();
+}
+
+function getUserOwnerKeySet(user = state.user) {
+  const keys = new Set();
+  if (!user) return keys;
+  if (user.email) keys.add(user.email.toLowerCase().trim());
+  if (user.uid) keys.add(String(user.uid).toLowerCase().trim());
+  return keys;
+}
+
+function claimLegacyDefaultItemsForUser(user = state.user) {
+  if (!user) return;
+  const primaryKey = getPrimaryUserOwnerId(user);
+  if (!primaryKey || primaryKey === "anonymous") return;
+
+  const hasLegacyItems =
+    state.folders.some((f) => !f.ownerId || f.ownerId === "default") ||
+    state.files.some((f) => !f.ownerId || f.ownerId === "default") ||
+    state.shares.some((s) => !s.ownerId || s.ownerId === "default");
+
+  if (!hasLegacyItems) return;
+
+  let legacyOwner = null;
+  try {
+    legacyOwner = localStorage.getItem(LEGACY_DEFAULT_OWNER_KEY);
+    if (!legacyOwner) {
+      legacyOwner = primaryKey;
+      localStorage.setItem(LEGACY_DEFAULT_OWNER_KEY, primaryKey);
+    }
+  } catch {
+    legacyOwner = primaryKey;
+  }
+
+  const userKeys = getUserOwnerKeySet(user);
+  if (userKeys.has(legacyOwner)) {
+    let updated = false;
+    for (const fld of state.folders) {
+      if (!fld.ownerId || fld.ownerId === "default") {
+        fld.ownerId = primaryKey;
+        updated = true;
+      }
+    }
+    for (const file of state.files) {
+      if (!file.ownerId || file.ownerId === "default") {
+        file.ownerId = primaryKey;
+        updated = true;
+      }
+    }
+    for (const shr of state.shares) {
+      if (!shr.ownerId || shr.ownerId === "default") {
+        shr.ownerId = primaryKey;
+        updated = true;
+      }
+    }
+    if (updated) saveWorkspaceCache();
+  }
+}
+
+function belongsToCurrentUser(item, user = state.user) {
+  if (!item || !user) return false;
+  const owner = String(item.ownerId || "").toLowerCase().trim();
+  const keys = getUserOwnerKeySet(user);
+  if (owner && keys.has(owner)) return true;
+  try {
+    const legacyOwner = localStorage.getItem(LEGACY_DEFAULT_OWNER_KEY);
+    if ((!owner || owner === "default") && legacyOwner && keys.has(legacyOwner)) {
+      return true;
+    }
+  } catch {
+    // ignore
+  }
+  return false;
+}
+
+function getUserFolders() {
+  claimLegacyDefaultItemsForUser(state.user);
+  return state.folders.filter((f) => belongsToCurrentUser(f));
+}
+
+function getUserFiles() {
+  claimLegacyDefaultItemsForUser(state.user);
+  return state.files.filter((f) => belongsToCurrentUser(f));
+}
+
+function getUserShares() {
+  claimLegacyDefaultItemsForUser(state.user);
+  return state.shares.filter((s) => belongsToCurrentUser(s));
+}
+
+function getUserFeedback() {
+  const uFiles = new Set(getUserFiles().map((f) => f.id));
+  const uShares = new Set(getUserShares().map((s) => s.id));
+  return state.feedback.filter(
+    (fb) => (fb.fileId && uFiles.has(fb.fileId)) || (fb.shareId && uShares.has(fb.shareId))
+  );
+}
+
 let cleanupPreviewVideo = null;
 
 // Toast Notification Helper
@@ -293,7 +429,7 @@ async function fetchWorkspaceData() {
       }),
     });
     if (res.ok) {
-      const data = await res.json();
+      const data = sanitizeWorkspaceCollections(await res.json());
       state.folders = mergeById(state.folders, data.folders || []);
       state.files = mergeById(state.files, data.files || []);
       state.shares = mergeById(state.shares, data.shares || []);
@@ -400,7 +536,7 @@ function renderGoogleLoginScreen() {
             <div class="flex items-center justify-between gap-3">
               <div class="inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-red-500/12 border border-red-400/30 text-[10px] font-mono-code text-red-300 uppercase tracking-wider">
                 <span class="w-1.5 h-1.5 rounded-full bg-red-400"></span>
-                <span>Studio Workspace Access</span>
+                <span>Studio Workspace Access • 5 GB Free</span>
               </div>
               <img
                 data-appex-logo="mark"
@@ -415,7 +551,7 @@ function renderGoogleLoginScreen() {
                 Deliver client media with studio precision.
               </h1>
               <p class="text-xs sm:text-sm text-slate-300 leading-relaxed mt-2.5">
-                Store high-resolution images, 4K video cuts, and project documents in structured folders. Share secure links with clients for instant review and sign-off.
+                Every Google login includes <strong class="text-white font-semibold">5.0 GB Free Cloud Storage</strong>. Store high-resolution images, 4K video cuts, and project documents in structured folders and share secure client review links.
               </p>
             </div>
 
@@ -528,12 +664,13 @@ function renderGoogleLoginScreen() {
     try {
       const profile = await signInWithFirebaseGoogle();
       state.user = profile;
+      state.currentFolderId = null;
       if (profile.needsOnboarding) {
         renderGoogleLoginScreen();
         document.getElementById("onboarding-name-input")?.focus();
         return;
       }
-      showToast(`Signed in as ${profile.displayName}`, "success");
+      showToast(`Signed in as ${profile.displayName} • 5.0 GB Free Storage active`, "success");
       navigateTo("/dashboard");
     } catch (err) {
       if (
@@ -569,14 +706,14 @@ function renderNewUserOnboardingModal(user) {
 
         <div class="p-6 space-y-4">
           <p class="text-xs text-slate-300">
-            Welcome! Your Google account is verified. Please confirm your name to complete your new studio profile:
+            Welcome! Your Google account is verified and includes <strong class="text-emerald-300">5.0 GB Free Cloud Storage</strong>. Please confirm your name to complete your new studio profile:
           </p>
 
           <form id="new-user-onboarding-form" class="space-y-3.5">
             <div>
               <div class="flex items-center justify-between mb-1">
                 <label class="block text-[11px] text-slate-300">Google Email</label>
-                <span class="text-[10px] font-mono-code text-emerald-400">Verified</span>
+                <span class="text-[10px] font-mono-code text-emerald-400">Verified • 5.0 GB Free</span>
               </div>
               <input
                 type="email"
@@ -615,7 +752,7 @@ function bindNewUserOnboardingEvents() {
     const displayName = nameInput ? nameInput.value.trim() : "";
     if (!displayName) return;
     state.user = completeNewUserOnboarding(state.user, displayName);
-    showToast(`Welcome to Appex Studios, ${state.user.displayName}`, "success");
+    showToast(`Welcome to Appex Studios, ${state.user.displayName} (5.0 GB Free)`, "success");
     navigateTo("/dashboard");
   });
 }
@@ -632,7 +769,16 @@ function renderDashboard() {
     cleanupPreviewVideo = null;
   }
 
-  const activeFiles = state.files.filter((f) => !f.isTrashed);
+  const userFolders = getUserFolders();
+  const userFiles = getUserFiles();
+  const userShares = getUserShares();
+  const userFeedback = getUserFeedback();
+
+  if (state.currentFolderId && !userFolders.some((f) => f.id === state.currentFolderId)) {
+    state.currentFolderId = null;
+  }
+
+  const activeFiles = userFiles.filter((f) => !f.isTrashed);
   const imageBytes = activeFiles
     .filter((f) => f.category === "IMAGE")
     .reduce((a, b) => a + (Number(b.sizeBytes) || 0), 0);
@@ -643,15 +789,20 @@ function renderDashboard() {
     .filter((f) => f.category === "DOCUMENT")
     .reduce((a, b) => a + (Number(b.sizeBytes) || 0), 0);
   const totalUsedBytes = imageBytes + videoBytes + docBytes;
-  const quotaPct = Math.min(100, Math.max(1, (totalUsedBytes / FIVE_GB) * 100));
+  const quotaPct =
+    totalUsedBytes > 0 ? Math.min(100, Math.max(1, (totalUsedBytes / FIVE_GB) * 100)) : 0;
+
+  const videoPct = videoBytes > 0 ? Math.max(1.2, (videoBytes / FIVE_GB) * 100) : 0;
+  const imagePct = imageBytes > 0 ? Math.max(1.2, (imageBytes / FIVE_GB) * 100) : 0;
+  const docPct = docBytes > 0 ? Math.max(1, (docBytes / FIVE_GB) * 100) : 0;
 
   // Compute breadcrumbs when in ALL nav
   const breadcrumbs = [];
   if (state.activeNav === "ALL" && state.currentFolderId) {
-    let ptr = state.folders.find((f) => f.id === state.currentFolderId);
+    let ptr = userFolders.find((f) => f.id === state.currentFolderId);
     while (ptr) {
       breadcrumbs.unshift(ptr);
-      ptr = state.folders.find((f) => f.id === ptr.parentId);
+      ptr = userFolders.find((f) => f.id === ptr.parentId);
     }
   }
 
@@ -662,40 +813,40 @@ function renderDashboard() {
   const q = state.searchQuery.trim().toLowerCase();
 
   if (state.activeNav === "ALL") {
-    visibleFolders = state.folders.filter(
+    visibleFolders = userFolders.filter(
       (f) =>
         !f.isTrashed &&
         (q ? f.name.toLowerCase().includes(q) : f.parentId === state.currentFolderId)
     );
-    visibleFiles = state.files.filter(
+    visibleFiles = userFiles.filter(
       (f) =>
         !f.isTrashed &&
         (q ? f.name.toLowerCase().includes(q) : f.folderId === state.currentFolderId)
     );
   } else if (["IMAGE", "VIDEO", "DOCUMENT"].includes(state.activeNav)) {
-    visibleFiles = state.files.filter(
+    visibleFiles = userFiles.filter(
       (f) =>
         !f.isTrashed &&
         f.category === state.activeNav &&
         (!q || f.name.toLowerCase().includes(q))
     );
   } else if (state.activeNav === "STARRED") {
-    visibleFolders = state.folders.filter(
+    visibleFolders = userFolders.filter(
       (f) => !f.isTrashed && f.isStarred && (!q || f.name.toLowerCase().includes(q))
     );
-    visibleFiles = state.files.filter(
+    visibleFiles = userFiles.filter(
       (f) => !f.isTrashed && f.isStarred && (!q || f.name.toLowerCase().includes(q))
     );
   } else if (state.activeNav === "TRASH") {
-    visibleFolders = state.folders.filter((f) => f.isTrashed);
-    visibleFiles = state.files.filter((f) => f.isTrashed);
+    visibleFolders = userFolders.filter((f) => f.isTrashed);
+    visibleFiles = userFiles.filter((f) => f.isTrashed);
   } else if (state.activeNav === "REVIEWS") {
-    visibleFiles = state.files.filter(
+    visibleFiles = userFiles.filter(
       (f) =>
         !f.isTrashed &&
         (f.approvalStatus === "APPROVED" ||
           f.approvalStatus === "CHANGES_REQUESTED" ||
-          state.feedback.some((fb) => fb.fileId === f.id))
+          userFeedback.some((fb) => fb.fileId === f.id))
     );
   }
 
@@ -798,13 +949,13 @@ function renderDashboard() {
                 id: "SHARES",
                 label: "Client Share Links",
                 icon: "link-2",
-                count: state.shares.length,
+                count: userShares.length,
               },
               {
                 id: "REVIEWS",
                 label: "Client Approvals",
                 icon: "check-circle-2",
-                count: state.feedback.length,
+                count: userFeedback.length,
               },
               {
                 id: "STARRED",
@@ -812,15 +963,15 @@ function renderDashboard() {
                 icon: "star",
                 count:
                   activeFiles.filter((f) => f.isStarred).length +
-                  state.folders.filter((f) => !f.isTrashed && f.isStarred).length,
+                  userFolders.filter((f) => !f.isTrashed && f.isStarred).length,
               },
               {
                 id: "TRASH",
                 label: "Trash",
                 icon: "trash-2",
                 count:
-                  state.files.filter((f) => f.isTrashed).length +
-                  state.folders.filter((f) => f.isTrashed).length,
+                  userFiles.filter((f) => f.isTrashed).length +
+                  userFolders.filter((f) => f.isTrashed).length,
               },
             ]
               .map(
@@ -849,27 +1000,27 @@ function renderDashboard() {
 
         <!-- Bottom Storage Meter & Google Account Card -->
         <div class="space-y-4 pt-6">
-          <!-- Studio Cloud Storage Quota Card -->
+          <!-- Studio Cloud Storage Quota Card (5.0 GB Free per Google Login) -->
           <div class="glass-card rounded-xl p-3.5 space-y-2.5">
             <div class="flex items-center justify-between text-xs">
               <span class="font-medium text-slate-200 flex items-center gap-1.5">
                 <i data-lucide="hard-drive" class="w-3.5 h-3.5 text-amber-400"></i>
                 <span>Cloud Storage</span>
               </span>
-              <span class="text-[11px] font-mono-code text-emerald-400">
-                Active
+              <span class="text-[10px] font-mono-code px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/25">
+                5.0 GB Free
               </span>
             </div>
 
             <div class="w-full h-1.5 bg-white/[0.07] rounded-full overflow-hidden flex">
-              <div style="width: ${Math.max(2, (videoBytes / FIVE_GB) * 100)}%" class="bg-sky-400 h-full"></div>
-              <div style="width: ${Math.max(2, (imageBytes / FIVE_GB) * 100)}%" class="bg-amber-400 h-full"></div>
-              <div style="width: ${Math.max(1, (docBytes / FIVE_GB) * 100)}%" class="bg-emerald-400 h-full"></div>
+              ${videoPct > 0 ? `<div style="width: ${videoPct}%" class="bg-sky-400 h-full"></div>` : ""}
+              ${imagePct > 0 ? `<div style="width: ${imagePct}%" class="bg-amber-400 h-full"></div>` : ""}
+              ${docPct > 0 ? `<div style="width: ${docPct}%" class="bg-emerald-400 h-full"></div>` : ""}
             </div>
 
             <div class="flex items-center justify-between text-[11px] font-mono-code text-slate-400">
               <span>${formatBytes(totalUsedBytes)} used</span>
-              <span>5.0 GB Vault</span>
+              <span>${formatBytes(Math.max(0, FIVE_GB - totalUsedBytes))} free</span>
             </div>
           </div>
 
@@ -1048,11 +1199,15 @@ function renderDashboard() {
 // EXPLORER SECTIONS (FOLDERS + MEDIA FILES + CLIENT SHARES)
 // ============================================================================
 function renderMediaExplorerSection(visibleFolders, visibleFiles) {
+  const userFolders = getUserFolders();
+  const userFiles = getUserFiles();
+  const userShares = getUserShares();
+
   const currentFolder = state.currentFolderId
-    ? state.folders.find((f) => f.id === state.currentFolderId)
+    ? userFolders.find((f) => f.id === state.currentFolderId)
     : null;
   const activeFolderShare = currentFolder
-    ? state.shares.find(
+    ? userShares.find(
         (s) =>
           s.isActive !== false &&
           s.resourceType === "FOLDER" &&
@@ -1145,13 +1300,13 @@ function renderMediaExplorerSection(visibleFolders, visibleFiles) {
             .map((fld) => {
               const c = getFolderColorStyles(fld.color);
               const itemCount =
-                state.files.filter((f) => !f.isTrashed && f.folderId === fld.id).length +
-                state.folders.filter((sf) => !sf.isTrashed && sf.parentId === fld.id)
+                userFiles.filter((f) => !f.isTrashed && f.folderId === fld.id).length +
+                userFolders.filter((sf) => !sf.isTrashed && sf.parentId === fld.id)
                   .length;
-              const folderBytes = state.files
+              const folderBytes = userFiles
                 .filter((f) => !f.isTrashed && f.folderId === fld.id)
                 .reduce((a, b) => a + (Number(b.sizeBytes) || 0), 0);
-              const existingShare = state.shares.find(
+              const existingShare = userShares.find(
                 (s) =>
                   s.isActive !== false &&
                   s.resourceType === "FOLDER" &&
@@ -1278,7 +1433,7 @@ function renderMediaExplorerSection(visibleFolders, visibleFiles) {
 }
 
 function renderActiveUploadQueueHTML() {
-  const uploadingFiles = state.files.filter(
+  const uploadingFiles = getUserFiles().filter(
     (f) =>
       !f.isTrashed &&
       (f.uploadStatus === "uploading" || f.uploadStatus === "complete")
@@ -1678,6 +1833,7 @@ function renderFilesTableView(files) {
 // ============================================================================
 function renderSharesManagementSection() {
   const origin = window.location.origin;
+  const userShares = getUserShares();
   return `
     <div class="space-y-6">
       <div class="flex flex-wrap items-center justify-between gap-4">
@@ -1691,11 +1847,11 @@ function renderSharesManagementSection() {
 
       <div class="grid grid-cols-1 gap-4">
         ${
-          state.shares.length === 0
+          userShares.length === 0
             ? `<div class="glass-panel rounded-2xl p-10 text-center text-sm text-slate-400">
                 No client share links created yet. Click "Share Folder Link" or "Share Link" on any item in your workspace.
               </div>`
-            : state.shares
+            : userShares
                 .map((s) => {
                   const shareUrl = `${origin}/share/${s.token}`;
                   return `
@@ -1776,6 +1932,7 @@ function renderSharesManagementSection() {
 }
 
 function renderReviewsSection(reviewedFiles) {
+  const userFeedback = getUserFeedback();
   return `
     <div class="space-y-6">
       <div>
@@ -1793,7 +1950,7 @@ function renderReviewsSection(reviewedFiles) {
 
         <div class="space-y-3">
           <h2 class="text-xs font-mono-code uppercase tracking-wider text-slate-400">Latest Client Feedback Stream</h2>
-          ${state.feedback
+          ${userFeedback
             .map(
               (fb) => `
             <div class="glass-panel rounded-xl p-4 space-y-2">
@@ -2583,7 +2740,7 @@ function bindDashboardEvents() {
       name,
       parentId: state.currentFolderId,
       color,
-      ownerId: state.user?.uid || "default",
+      ownerId: getPrimaryUserOwnerId(),
       isStarred: false,
       isTrashed: false,
       createdAt: now,
@@ -2646,6 +2803,7 @@ function bindDashboardEvents() {
       expiresAt = new Date(now.getTime() + expiresInDays * 86400000).toISOString();
     }
 
+    const ownerId = getPrimaryUserOwnerId();
     const optimisticShare = {
       id: `shr-${Math.random().toString(36).slice(2, 11)}`,
       token,
@@ -2655,7 +2813,7 @@ function bindDashboardEvents() {
       folderId: resourceType === "FOLDER" ? item.id : null,
       fileId: resourceType === "FILE" ? item.id : null,
       resourceName: item.name,
-      ownerId: state.user?.uid || "default",
+      ownerId,
       ownerName: state.user?.displayName || "Studio Director",
       studioName: state.user?.studioName || "Appex Studios",
       allowDownload,
@@ -2682,7 +2840,7 @@ function bindDashboardEvents() {
           folderId: resourceType === "FOLDER" ? item.id : null,
           fileId: resourceType === "FILE" ? item.id : null,
           resourceName: item.name,
-          ownerId: state.user?.uid || "default",
+          ownerId,
           ownerName: state.user?.displayName || "Studio Director",
           studioName: state.user?.studioName || "Appex Studios",
           allowDownload,
@@ -2693,6 +2851,7 @@ function bindDashboardEvents() {
       });
       const data = await res.json();
       if (res.ok && data.share) {
+        data.share.ownerId = ownerId;
         state.shares.unshift(data.share);
         state.createdShareResult = data.share;
       } else {
@@ -2770,7 +2929,7 @@ function bindDashboardEvents() {
 function isFolderInsideSharedHierarchy(folderId) {
   if (!folderId) return false;
   const activeFolderShareIds = new Set(
-    state.shares
+    getUserShares()
       .filter((s) => s.resourceType === "FOLDER" && s.isActive !== false && s.folderId)
       .map((s) => s.folderId)
   );
@@ -2866,15 +3025,29 @@ function updateUploadProgressDOM(file) {
   }
 }
 
+function getCurrentUserUsedBytes() {
+  return getUserFiles()
+    .filter((f) => !f.isTrashed)
+    .reduce((acc, f) => acc + (Number(f.sizeBytes) || 0), 0);
+}
+
 async function handleFilesBatchUpload(fileList) {
   if (!fileList || fileList.length === 0) return;
 
+  const incomingBytes = fileList.reduce((acc, f) => acc + (Number(f.size) || 0), 0);
+  if (getCurrentUserUsedBytes() + incomingBytes > FIVE_GB) {
+    showToast("Upload exceeds your 5.0 GB Free Cloud Storage quota for this account", "error");
+    return;
+  }
+
+  const ownerId = getPrimaryUserOwnerId();
   const addedFiles = [];
   for (let i = 0; i < fileList.length; i++) {
     const file = fileList[i];
     const existingIdx = state.files.findIndex(
       (f) =>
         !f.isTrashed &&
+        belongsToCurrentUser(f) &&
         (f.folderId || null) === (state.currentFolderId || null) &&
         f.name === file.name
     );
@@ -2883,7 +3056,7 @@ async function handleFilesBatchUpload(fileList) {
     const instantItem = await uploadMediaFile(file, {
       existingId: existingFile?.id || null,
       folderId: state.currentFolderId,
-      ownerId: state.user?.uid || "default",
+      ownerId,
       onProgress: (updatedFile) => {
         updateUploadProgressDOM(updatedFile);
       },
@@ -2918,6 +3091,13 @@ async function handleFilesBatchUpload(fileList) {
 async function handleFolderBatchUpload(fileList) {
   if (!fileList || fileList.length === 0) return;
 
+  const incomingBytes = fileList.reduce((acc, f) => acc + (Number(f.size) || 0), 0);
+  if (getCurrentUserUsedBytes() + incomingBytes > FIVE_GB) {
+    showToast("Folder upload exceeds your 5.0 GB Free Cloud Storage quota for this account", "error");
+    return;
+  }
+
+  const ownerId = getPrimaryUserOwnerId();
   const now = new Date().toISOString();
   const folderPathMap = new Map(); // relativeFolderPath -> folderId
 
@@ -2932,6 +3112,7 @@ async function handleFolderBatchUpload(fileList) {
         const existingFolder = state.folders.find(
           (f) =>
             !f.isTrashed &&
+            belongsToCurrentUser(f) &&
             (f.parentId || null) === (parentId || null) &&
             f.name.toLowerCase() === seg.toLowerCase()
         );
@@ -2944,7 +3125,7 @@ async function handleFolderBatchUpload(fileList) {
             name: seg,
             parentId,
             color: "amber",
-            ownerId: state.user?.uid || "default",
+            ownerId,
             isStarred: false,
             isTrashed: false,
             createdAt: now,
@@ -2979,6 +3160,7 @@ async function handleFolderBatchUpload(fileList) {
     const existingIdx = state.files.findIndex(
       (f) =>
         !f.isTrashed &&
+        belongsToCurrentUser(f) &&
         (f.folderId || null) === (targetFolderId || null) &&
         f.name === file.name
     );
@@ -2987,7 +3169,7 @@ async function handleFolderBatchUpload(fileList) {
     const instantItem = await uploadMediaFile(file, {
       existingId: existingFile?.id || null,
       folderId: targetFolderId,
-      ownerId: state.user?.uid || "default",
+      ownerId,
       onProgress: (updatedFile) => {
         updateUploadProgressDOM(updatedFile);
       },

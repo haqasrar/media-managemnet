@@ -488,10 +488,20 @@ async function handleRoute() {
 // ============================================================================
 function renderGoogleLoginScreen() {
   rootEl.innerHTML = `
-    <div class="min-h-screen lg:h-screen lg:overflow-hidden grid grid-cols-1 lg:grid-cols-12 bg-[#12151e]">
-      <!-- LEFT SIDE: ARCHITECTURAL STUDIO BACKGROUND, TOP-LEFT LOGO, CENTER CARD, BOTTOM FOOTER -->
-      <div class="lg:col-span-5 xl:col-span-5 min-h-[520px] lg:h-screen flex flex-col justify-between border-b lg:border-b-0 lg:border-r border-white/[0.12] studio-auth-panel relative overflow-hidden z-10">
+    <div class="min-h-[100dvh] lg:h-screen lg:overflow-hidden grid grid-cols-1 lg:grid-cols-12 bg-[#12151e]">
+      <!-- LEFT SIDE (FULL-SCREEN ON MOBILE/TABLET WITH TRANSLUCENT STUDIO IMAGE BACKDROP, LEFT COLUMN ON DESKTOP) -->
+      <div class="lg:col-span-5 xl:col-span-5 min-h-[100dvh] lg:h-screen flex flex-col justify-between lg:border-r border-white/[0.12] studio-auth-panel relative overflow-hidden z-10">
         
+        <!-- Mobile & Tablet Translucent Studio Image in Backside (< 1024px) -->
+        <div class="lg:hidden pointer-events-none absolute inset-0 overflow-hidden">
+          <img
+            src="/assets/appex-studio-hero.jpg"
+            alt=""
+            class="w-full h-full object-cover object-center opacity-30 scale-105"
+          />
+          <div class="absolute inset-0 bg-gradient-to-b from-[#090c12]/80 via-[#090c12]/65 to-[#090c12]/92 backdrop-blur-[2px]"></div>
+        </div>
+
         <!-- Visual Background Architecture (Grid, Viewfinder Corners, Lens Rings & Studio Light) -->
         <div class="pointer-events-none absolute inset-0 studio-grid-overlay"></div>
 
@@ -527,8 +537,8 @@ function renderGoogleLoginScreen() {
           </div>
         </header>
 
-        <!-- 2. Center Glassmorphic Sign-In Card -->
-        <div class="relative z-10 my-auto mx-auto w-full max-w-[450px] px-4 sm:px-6 py-4 sm:py-6">
+        <!-- 2. Center Glassmorphic Sign-In Card (+ Translucent Glassmorphic Showcase Card on Mobile/Tablet) -->
+        <div class="relative z-10 my-auto mx-auto w-full max-w-[460px] px-4 sm:px-6 py-4 sm:py-6 space-y-3.5">
           <div class="studio-auth-card rounded-2xl p-5 sm:p-8 w-full animate-view space-y-5 sm:space-y-6 relative overflow-hidden">
             <!-- Top Specular Metallic & Crimson Rim Line -->
             <div class="pointer-events-none absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-red-400/50 to-transparent"></div>
@@ -568,10 +578,41 @@ function renderGoogleLoginScreen() {
               </button>
             </div>
           </div>
+
+          <!-- Mobile & Tablet Translucent Glassmorphic Showcase Card (Floats over backside image, hidden on lg+) -->
+          <div class="lg:hidden glass-panel rounded-2xl p-4 sm:p-5 border border-white/[0.15] bg-white/[0.04] backdrop-blur-xl space-y-2.5">
+            <div class="text-[9px] sm:text-[10px] font-mono-code uppercase tracking-widest text-red-300">
+              UNIFIED STORAGE & CLIENT DELIVERY
+            </div>
+            <div class="text-sm sm:text-base font-semibold text-white leading-snug">
+              Built for Photographers, Filmmakers & Creative Agencies
+            </div>
+            <div class="text-[11px] sm:text-xs text-slate-300 leading-relaxed">
+              Upload project folders, organize high-resolution stills, video masters, and documents, and share password-protected or open client links with instant approval tracking.
+            </div>
+            <div class="pt-2.5 border-t border-white/[0.1] grid grid-cols-2 gap-2 text-[10px] sm:text-xs font-mono-code text-slate-200">
+              <span class="inline-flex items-center gap-1.5">
+                <i data-lucide="image" class="w-3.5 h-3.5 text-amber-400 shrink-0"></i>
+                <span class="truncate">High-Res Images</span>
+              </span>
+              <span class="inline-flex items-center gap-1.5">
+                <i data-lucide="film" class="w-3.5 h-3.5 text-sky-400 shrink-0"></i>
+                <span class="truncate">Video Streams</span>
+              </span>
+              <span class="inline-flex items-center gap-1.5">
+                <i data-lucide="file-text" class="w-3.5 h-3.5 text-emerald-400 shrink-0"></i>
+                <span class="truncate">Project Documents</span>
+              </span>
+              <span class="inline-flex items-center gap-1.5">
+                <i data-lucide="folder-lock" class="w-3.5 h-3.5 text-slate-300 shrink-0"></i>
+                <span class="truncate">Client Folder Links</span>
+              </span>
+            </div>
+          </div>
         </div>
 
         <!-- 3. Bottom Footer — Pinned at the very bottom of the screen -->
-        <footer class="relative z-10 w-full px-4 sm:px-7 py-3.5 sm:py-4 border-t border-white/[0.1] bg-black/20 backdrop-blur-md flex flex-wrap items-center justify-between gap-2 text-[11px] sm:text-xs">
+        <footer class="relative z-10 w-full px-4 sm:px-7 py-3.5 sm:py-4 border-t border-white/[0.1] bg-black/30 backdrop-blur-md flex flex-wrap items-center justify-between gap-2 text-[11px] sm:text-xs">
           <div class="flex items-center gap-1.5 sm:gap-2 text-slate-300">
             <span class="font-medium">© Appex Studios</span>
             <span class="text-slate-600">•</span>
@@ -598,9 +639,9 @@ function renderGoogleLoginScreen() {
 
       </div>
 
-      <!-- RIGHT SIDE: FULL-VIEWPORT FRAMED STUDIO PHOTOGRAPHY SHOWCASE -->
-      <div class="lg:col-span-7 xl:col-span-7 h-[360px] sm:h-[440px] lg:h-screen p-3 sm:p-6 lg:p-7 flex items-center justify-center relative">
-        <div class="relative w-full h-full rounded-2xl sm:rounded-3xl overflow-hidden border border-white/[0.14] shadow-2xl flex flex-col justify-between p-4 sm:p-8">
+      <!-- RIGHT SIDE: FULL-VIEWPORT FRAMED STUDIO PHOTOGRAPHY SHOWCASE (DESKTOP ONLY lg+) -->
+      <div class="hidden lg:flex lg:col-span-7 xl:col-span-7 lg:h-screen p-7 items-center justify-center relative">
+        <div class="relative w-full h-full rounded-3xl overflow-hidden border border-white/[0.14] shadow-2xl flex flex-col justify-between p-8">
           <!-- Generated Studio Background Image -->
           <img
             src="/assets/appex-studio-hero.jpg"
@@ -608,30 +649,30 @@ function renderGoogleLoginScreen() {
             class="absolute inset-0 w-full h-full object-cover object-center"
           />
           <!-- Balanced Vignette Gradients -->
-          <div class="absolute inset-0 bg-gradient-to-t from-[#06080c]/95 via-[#06080c]/25 to-[#06080c]/45"></div>
+          <div class="absolute inset-0 bg-gradient-to-t from-[#06080c]/95 via-[#06080c]/20 to-[#06080c]/45"></div>
 
           <!-- Top Badge Inside Showcase -->
-          <div class="relative z-10 flex items-center justify-between gap-3 w-full">
-            <div class="glass-panel px-3 py-1 sm:px-3.5 sm:py-1.5 rounded-full text-[10px] sm:text-[11px] font-mono-code text-slate-200 inline-flex items-center gap-2">
+          <div class="relative z-10 flex items-center justify-between gap-4 w-full">
+            <div class="glass-panel px-3.5 py-1.5 rounded-full text-[11px] font-mono-code text-slate-200 inline-flex items-center gap-2">
               <span class="w-2 h-2 rounded-full bg-red-500 shrink-0"></span>
-              <span class="truncate">APPEX STUDIOS • CREATIVE MEDIA WORKSPACE</span>
+              <span>APPEX STUDIOS • CREATIVE MEDIA WORKSPACE</span>
             </div>
           </div>
 
           <!-- Bottom Studio Caption Card (No Demo Links) -->
           <div class="relative z-10 w-full">
-            <div class="glass-panel rounded-2xl p-4 sm:p-6 border border-white/[0.15] backdrop-blur-xl space-y-2 sm:space-y-3">
-              <div class="text-[9px] sm:text-[10px] font-mono-code uppercase tracking-widest text-red-300">
+            <div class="glass-panel rounded-2xl p-6 border border-white/[0.15] backdrop-blur-xl space-y-3">
+              <div class="text-[10px] font-mono-code uppercase tracking-widest text-red-300">
                 UNIFIED STORAGE & CLIENT DELIVERY
               </div>
-              <div class="text-sm sm:text-lg font-semibold text-white leading-snug">
+              <div class="text-lg font-semibold text-white leading-snug">
                 Built for Photographers, Filmmakers & Creative Agencies
               </div>
-              <div class="text-[11px] sm:text-xs text-slate-300 max-w-2xl leading-relaxed line-clamp-2 sm:line-clamp-none">
+              <div class="text-xs text-slate-300 max-w-2xl leading-relaxed">
                 Upload project folders, organize high-resolution stills, video masters, and documents, and share password-protected or open client links with instant approval tracking.
               </div>
 
-              <div class="pt-2.5 sm:pt-3 border-t border-white/[0.1] flex flex-wrap items-center gap-3 sm:gap-5 text-[10px] sm:text-xs font-mono-code text-slate-300">
+              <div class="pt-3 border-t border-white/[0.1] flex flex-wrap items-center gap-5 text-xs font-mono-code text-slate-300">
                 <span class="inline-flex items-center gap-1.5">
                   <i data-lucide="image" class="w-3.5 h-3.5 text-amber-400"></i>
                   High-Res Images

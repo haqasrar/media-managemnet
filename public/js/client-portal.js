@@ -15,6 +15,7 @@ import {
   renderCodeViewerContainer,
   fetchAndRenderCodePreview,
   decodeDataUrl,
+  getHtmlFileBlobUrl,
 } from "./ui-helpers.js?v=16";
 import { hydrateMediaFilesFromVault } from "./firebase-client.js?v=15";
 

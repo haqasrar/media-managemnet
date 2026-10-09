@@ -674,3 +674,54 @@ export function decodeDataUrl(dataUrl = "") {
     }
   }
 }
+
+export async function getHtmlFileBlobUrl(file) {
+  if (!file) return null;
+  if (file._livePreviewBlobUrl) return file._livePreviewBlobUrl;
+
+  let htmlText = file._cachedText || null;
+
+  // 1. Try vault IndexedDB
+  if (!htmlText) {
+    try {
+      if (typeof getMediaFromVault === "function") {
+        const rec = await getMediaFromVault(file.id, file.name);
+        if (rec?.blob instanceof Blob) {
+          htmlText = await rec.blob.text();
+        } else if (rec?.dataUrl) {
+          htmlText = decodeDataUrl(rec.dataUrl);
+        }
+      }
+    } catch {}
+  }
+
+  // 2. Try file.url (Data URL)
+  if (!htmlText && file.url && file.url.startsWith("data:")) {
+    htmlText = decodeDataUrl(file.url);
+  }
+
+  // 3. Try fetching file.url over network
+  if (!htmlText && file.url && !file.url.startsWith("blob:")) {
+    try {
+      const res = await fetch(file.url);
+      if (res.ok) {
+        htmlText = await res.text();
+      }
+    } catch {}
+  }
+
+  if (htmlText) {
+    file._cachedText = htmlText;
+    const blob = new Blob([htmlText], { type: "text/html; charset=utf-8" });
+    const blobUrl = URL.createObjectURL(blob);
+    file._livePreviewBlobUrl = blobUrl;
+    return blobUrl;
+  }
+
+  if (file.url && !file.url.startsWith("blob:")) {
+    return file.url;
+  }
+
+  return null;
+}
+

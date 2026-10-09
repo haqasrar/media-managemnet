@@ -526,12 +526,12 @@ function renderGoogleLoginScreen() {
               <img
                 data-appex-logo="mark"
                 src="/assets/appex-logo.webp"
-                alt="Appex Studios Logo"
+                alt="Tech Titans Logo"
                 class="w-full h-full object-contain drop-shadow-[0_2px_6px_rgba(239,68,68,0.25)]"
               />
             </div>
             <div>
-              <div class="text-xs sm:text-sm font-bold tracking-wider text-white uppercase leading-none">APPEX STUDIOS</div>
+              <div class="text-xs sm:text-sm font-bold tracking-wider text-white uppercase leading-none">TECH TITANS</div>
               <div class="text-[9px] sm:text-[10px] font-mono-code text-slate-300 tracking-wider mt-1">MEDIA VAULT & CLIENT PORTAL</div>
             </div>
           </div>
@@ -614,27 +614,10 @@ function renderGoogleLoginScreen() {
         <!-- 3. Bottom Footer — Pinned at the very bottom of the screen -->
         <footer class="relative z-10 w-full px-4 sm:px-7 py-3.5 sm:py-4 border-t border-white/[0.1] bg-black/30 backdrop-blur-md flex flex-wrap items-center justify-between gap-2 text-[11px] sm:text-xs">
           <div class="flex items-center gap-1.5 sm:gap-2 text-slate-300">
-            <span class="font-medium">© Appex Studios</span>
+            <span class="font-medium">© Tech Titans</span>
             <span class="text-slate-600">•</span>
-            <span class="text-slate-400">
-              From
-              <a
-                href="https://appexproductions.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="text-white hover:text-red-400 font-medium underline underline-offset-4 decoration-white/25 hover:decoration-red-400 transition"
-              >Appex Productions</a>
-            </span>
+            <span class="text-slate-400">Mohammad Asrar, Punit Badyal And Neyashri A</span>
           </div>
-          <a
-            href="https://appexproductions.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="font-mono-code text-[10px] sm:text-[11px] text-slate-400 hover:text-white transition inline-flex items-center gap-1"
-          >
-            <span>appexproductions.com</span>
-            <i data-lucide="arrow-up-right" class="w-3 h-3"></i>
-          </a>
         </footer>
 
       </div>
@@ -645,7 +628,7 @@ function renderGoogleLoginScreen() {
           <!-- Generated Studio Background Image -->
           <img
             src="/assets/appex-studio-hero.jpg"
-            alt="Appex Studios Production Suite"
+            alt="Tech Titans Production Suite"
             class="absolute inset-0 w-full h-full object-cover object-center"
           />
           <!-- Balanced Vignette Gradients -->
@@ -655,7 +638,7 @@ function renderGoogleLoginScreen() {
           <div class="relative z-10 flex items-center justify-between gap-4 w-full">
             <div class="glass-panel px-3.5 py-1.5 rounded-full text-[11px] font-mono-code text-slate-200 inline-flex items-center gap-2">
               <span class="w-2 h-2 rounded-full bg-red-500 shrink-0"></span>
-              <span>APPEX STUDIOS • CREATIVE MEDIA WORKSPACE</span>
+              <span>TECH TITANS • CREATIVE MEDIA WORKSPACE</span>
             </div>
           </div>
 
@@ -742,7 +725,7 @@ function renderNewUserOnboardingModal(user) {
         <div class="px-6 py-4 border-b border-white/[0.08] flex items-center justify-between">
           <div class="flex items-center gap-2.5">
             ${GOOGLE_LOGO_SVG}
-            <span class="text-sm font-semibold text-white">Complete Your Profile — Appex Studios</span>
+            <span class="text-sm font-semibold text-white">Complete Your Profile — Tech Titans</span>
           </div>
         </div>
 
@@ -778,7 +761,7 @@ function renderNewUserOnboardingModal(user) {
             </div>
 
             <button type="submit" class="btn-studio-primary w-full py-2.5 rounded-lg text-xs flex items-center justify-center gap-2">
-              <span>Continue to Appex Studios</span>
+              <span>Continue to Tech Titans</span>
             </button>
           </form>
         </div>
@@ -794,7 +777,7 @@ function bindNewUserOnboardingEvents() {
     const displayName = nameInput ? nameInput.value.trim() : "";
     if (!displayName) return;
     state.user = completeNewUserOnboarding(state.user, displayName);
-    showToast(`Welcome to Appex Studios, ${state.user.displayName} (5.0 GB Free)`, "success");
+    showToast(`Welcome to Tech Titans, ${state.user.displayName} (5.0 GB Free)`, "success");
     navigateTo("/dashboard");
   });
 }
@@ -920,14 +903,14 @@ function renderDashboard() {
                 <img
                   data-appex-logo="mark"
                   src="/assets/appex-logo.webp"
-                  alt="Appex Studios"
+                  alt="Tech Titans"
                   class="w-full h-full object-contain"
                 />
               </div>
               <div class="min-w-0">
-                <div class="text-sm font-bold text-white tracking-wider leading-none truncate">APPEX STUDIOS</div>
+                <div class="text-sm font-bold text-white tracking-wider leading-none truncate">TECH TITANS</div>
                 <div class="text-[10px] font-mono-code text-slate-400 mt-1 truncate max-w-[135px]">${escapeHtml(
-                  state.user?.studioName || "Appex Studios"
+                  state.user?.studioName || "Tech Titans"
                 )}</div>
               </div>
             </div>
@@ -1131,7 +1114,7 @@ function renderDashboard() {
                 <img
                   data-appex-logo="mark"
                   src="/assets/appex-logo.webp"
-                  alt="Appex"
+                  alt="Tech Titans"
                   class="w-full h-full object-contain"
                 />
               </div>
@@ -2447,7 +2430,7 @@ function renderFirebaseConfigModal() {
         </div>
 
         <p class="text-xs text-slate-400 leading-relaxed">
-          Paste your Firebase Web App credentials below (or in <code class="text-slate-200 font-mono-code">.env.local</code>) to connect live Firebase Google OAuth and your 5 GB Firebase Cloud Storage bucket. When blank, Appex Studios automatically runs in Hybrid Local Storage mode.
+          Paste your Firebase Web App credentials below (or in <code class="text-slate-200 font-mono-code">.env.local</code>) to connect live Firebase Google OAuth and your 5 GB Firebase Cloud Storage bucket. When blank, Tech Titans automatically runs in Hybrid Local Storage mode.
         </p>
 
         <form id="firebase-config-form" class="space-y-3">
@@ -2953,7 +2936,7 @@ function bindDashboardEvents() {
       resourceName: item.name,
       ownerId,
       ownerName: state.user?.displayName || "Studio Director",
-      studioName: state.user?.studioName || "Appex Studios",
+      studioName: state.user?.studioName || "Tech Titans",
       allowDownload,
       allowFeedback,
       password: password || null,
@@ -2980,7 +2963,7 @@ function bindDashboardEvents() {
           resourceName: item.name,
           ownerId,
           ownerName: state.user?.displayName || "Studio Director",
-          studioName: state.user?.studioName || "Appex Studios",
+          studioName: state.user?.studioName || "Tech Titans",
           allowDownload,
           allowFeedback,
           password: password || null,

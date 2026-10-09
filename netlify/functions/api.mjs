@@ -436,7 +436,7 @@ export async function handler(event) {
       resourceName: body.resourceName || "Shared Deliverable",
       ownerId: body.ownerId || "default",
       ownerName: body.ownerName || "Studio Creator",
-      studioName: body.studioName || "Appex Studios",
+      studioName: body.studioName || "Tech Titans",
       allowDownload: body.allowDownload !== false,
       allowFeedback: body.allowFeedback !== false,
       password: body.password ? String(body.password).trim() : null,

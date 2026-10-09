@@ -204,7 +204,7 @@ export async function signInWithFirebaseGoogle() {
     displayName: existingRecord?.displayName || u.displayName || "",
     googleDisplayName: u.displayName || "",
     photoURL: u.photoURL || "",
-    studioName: "Appex Studios",
+    studioName: "Tech Titans",
     authProvider: "google-firebase",
     needsOnboarding: isNewUser,
     signedInAt: new Date().toISOString(),

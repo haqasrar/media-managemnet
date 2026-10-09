@@ -307,7 +307,7 @@ function generateSamplePdfBuffer() {
 
   const streamContent = [
     "BT",
-    "/F1 18 Tf 54 720 Td (APPEX STUDIOS - DELIVERABLE SPECIFICATION) Tj",
+    "/F1 18 Tf 54 720 Td (TECH TITANS - DELIVERABLE SPECIFICATION) Tj",
     "/F2 11 Tf 0 -28 Td (Project: 01 - Nordic Pavilion Architectural Documentation) Tj",
     "0 -18 Td (Prepared for: Client Review & Sign-Off Portal) Tj",
     "0 -32 Td /F1 13 Tf (1. Deliverable Package Overview) Tj",
@@ -316,7 +316,7 @@ function generateSamplePdfBuffer() {
     "0 -16 Td (- Curtain Wall Mullion Detail: 4500 x 3000 px, Architectural Ortho) Tj",
     "0 -16 Td (- Director Walkthrough Cut: 4K UHD 24fps Master Stream) Tj",
     "0 -32 Td /F1 13 Tf (2. Client Review & Approval Protocol) Tj",
-    "/F2 11 Tf 0 -20 Td (Please inspect each asset in the shared Appex Studios Client Portal.) Tj",
+    "/F2 11 Tf 0 -20 Td (Please inspect each asset in the shared Tech Titans Client Portal.) Tj",
     "0 -16 Td (Use the 'Approve Deliverable' or 'Request Revision' controls on the right panel) Tj",
     "0 -16 Td (to log frame-accurate or print-retouching notes directly to our studio workspace.) Tj",
     "0 -32 Td /F1 13 Tf (3. Storage & Delivery Security) Tj",
@@ -844,7 +844,7 @@ const server = http.createServer(async (req, res) => {
         resourceName: body.resourceName || "Shared Deliverable",
         ownerId: body.ownerId || "default",
         ownerName: body.ownerName || "Studio Creator",
-        studioName: body.studioName || "Appex Studios",
+        studioName: body.studioName || "Tech Titans",
         allowDownload: body.allowDownload !== false,
         allowFeedback: body.allowFeedback !== false,
         password: body.password ? String(body.password).trim() : null,
@@ -1106,6 +1106,6 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`\n  Appex Studios Media Portal running at: http://localhost:${PORT}`);
+  console.log(`\n  Tech Titans Media Portal running at: http://localhost:${PORT}`);
   console.log(`  Client Share Portal Demo URL:          http://localhost:${PORT}/share/nordic-pavilion-review\n`);
 });

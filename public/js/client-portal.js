@@ -563,7 +563,7 @@ export function createClientPortalController({ rootEl, token, showToast }) {
                   <span class="w-2.5 h-2.5 rounded-sm bg-amber-400"></span>
                 </div>
                 <span class="text-xs font-mono-code uppercase tracking-widest text-slate-300">${escapeHtml(
-                  passwordPromptInfo.studioName || "Appex Studios"
+                  passwordPromptInfo.studioName || "Tech Titans"
                 )}</span>
               </div>
               <span class="text-[11px] font-mono-code text-amber-300/90 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded">Protected Portal</span>
@@ -662,14 +662,14 @@ export function createClientPortalController({ rootEl, token, showToast }) {
                 <img
                   data-appex-logo="mark"
                   src="/assets/appex-logo.webp"
-                  alt="Appex Studios"
+                  alt="Tech Titans"
                   class="w-full h-full object-contain"
                 />
               </div>
               <div class="min-w-0">
                 <div class="flex items-center gap-1.5 sm:gap-2 flex-wrap">
                   <span class="text-[10px] sm:text-xs font-mono-code uppercase tracking-widest text-slate-400 truncate">${escapeHtml(
-                    share.studioName || "Appex Studios"
+                    share.studioName || "Tech Titans"
                   )}</span>
                   <span class="text-slate-600">•</span>
                   <span class="text-[10px] sm:text-xs text-slate-400">Client Review Portal</span>
@@ -1030,13 +1030,8 @@ export function createClientPortalController({ rootEl, token, showToast }) {
 
         <!-- Client Portal Footer -->
         <footer class="px-4 sm:px-6 py-4 border-t border-white/[0.06] text-center text-xs text-slate-400">
-          <span>Powered by <strong class="text-slate-200">Appex Studios</strong> • From </span>
-          <a
-            href="https://appexproductions.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="text-amber-300 hover:text-amber-200 underline underline-offset-4 transition font-medium"
-          >Appex Productions</a>
+          <span>Powered by <strong class="text-slate-200">Tech Titans</strong> • </span>
+          <span>Mohammad Asrar, Punit Badyal And Neyashri A</span>
         </footer>
       </div>
 

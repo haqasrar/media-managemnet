@@ -1180,6 +1180,6 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`\n  Tech Titans Media Portal running at: http://localhost:${PORT}`);
+  console.log(`\n  Secure Sharing Portal (by Team Tech Titans) running at: http://localhost:${PORT}`);
   console.log(`  Client Share Portal Demo URL:          http://localhost:${PORT}/share/nordic-pavilion-review\n`);
 });

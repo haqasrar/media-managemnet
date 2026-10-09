@@ -14,8 +14,8 @@ import {
   renderCodeCardThumbnail,
   renderCodeViewerContainer,
   fetchAndRenderCodePreview,
-} from "./ui-helpers.js?v=12";
-import { hydrateMediaFilesFromVault } from "./firebase-client.js?v=12";
+} from "./ui-helpers.js?v=15";
+import { hydrateMediaFilesFromVault } from "./firebase-client.js?v=15";
 
 export function createClientPortalController({ rootEl, token, showToast }) {
   // Strictly lock this browser tab to the Client Portal so refreshing never opens the Studio Account
@@ -621,18 +621,22 @@ export function createClientPortalController({ rootEl, token, showToast }) {
     const totalBytes = files.reduce((acc, f) => acc + (Number(f.sizeBytes) || 0), 0);
     const approvedCount = files.filter((f) => f.approvalStatus === "APPROVED").length;
 
+    if (share.resourceType === "FOLDER" && share.folderId && !currentSubfolderId) {
+      currentSubfolderId = share.folderId;
+    }
+
     // Filter subfolders and files for current folder view
     const visibleSubfolders =
       share.resourceType === "FOLDER"
-        ? folders.filter((f) => f.parentId === currentSubfolderId)
+        ? folders.filter((f) => String(f.parentId) === String(currentSubfolderId))
         : [];
 
     let visibleFiles =
       share.resourceType === "FOLDER"
         ? files.filter(
             (f) =>
-              f.folderId === currentSubfolderId ||
-              (currentSubfolderId === share.folderId && !f.folderId)
+              String(f.folderId) === String(currentSubfolderId) ||
+              (String(currentSubfolderId) === String(share.folderId) && !f.folderId)
           )
         : files;
 
@@ -649,13 +653,13 @@ export function createClientPortalController({ rootEl, token, showToast }) {
     // Build folder breadcrumbs inside the shared folder
     const breadcrumbs = [];
     if (share.resourceType === "FOLDER" && share.folderId) {
-      let ptr = folders.find((f) => f.id === currentSubfolderId);
+      let ptr = folders.find((f) => String(f.id) === String(currentSubfolderId));
       const visited = new Set();
       while (ptr && !visited.has(ptr.id)) {
         visited.add(ptr.id);
         breadcrumbs.unshift(ptr);
-        if (ptr.id === share.folderId) break;
-        ptr = folders.find((f) => f.id === ptr.parentId);
+        if (String(ptr.id) === String(share.folderId)) break;
+        ptr = folders.find((f) => String(f.id) === String(ptr.parentId));
       }
     }
 
@@ -802,7 +806,7 @@ export function createClientPortalController({ rootEl, token, showToast }) {
                     <button
                       data-portal-folder="${escapeHtml(b.id)}"
                       class="px-2.5 py-1 rounded-lg transition inline-flex items-center gap-1.5 ${
-                        b.id === currentSubfolderId && activeCategoryFilter === "ALL"
+                        String(b.id) === String(currentSubfolderId) && activeCategoryFilter === "ALL"
                           ? "bg-white/10 text-white font-medium border border-white/15"
                           : "text-slate-400 hover:text-white hover:bg-white/5"
                       }"
@@ -919,11 +923,13 @@ export function createClientPortalController({ rootEl, token, showToast }) {
                           (fb) => fb.fileId === file.id
                         ).length;
                         return `
-                          <div class="glass-card rounded-2xl overflow-hidden flex flex-col group">
+                          <div
+                            data-inspect-file="${escapeHtml(file.id)}"
+                            class="glass-card rounded-2xl overflow-hidden flex flex-col group cursor-pointer hover:border-white/20 transition"
+                          >
                             <!-- Media Thumbnail Area -->
                             <div
-                              data-inspect-file="${escapeHtml(file.id)}"
-                              class="relative h-48 sm:h-52 bg-slate-950/70 border-b border-white/[0.07] cursor-pointer overflow-hidden flex items-center justify-center"
+                              class="relative h-48 sm:h-52 bg-slate-950/70 border-b border-white/[0.07] overflow-hidden flex items-center justify-center"
                             >
                               ${
                                 file.category === "IMAGE"
@@ -986,8 +992,9 @@ export function createClientPortalController({ rootEl, token, showToast }) {
                               <!-- Client Action Footer -->
                               <div class="pt-3 border-t border-white/[0.07] flex items-center justify-between gap-2">
                                 <button
+                                  type="button"
                                   data-inspect-file="${escapeHtml(file.id)}"
-                                  class="glass-button px-3 py-1.5 rounded-lg text-xs font-medium text-slate-200 inline-flex items-center gap-1.5"
+                                  class="glass-button px-3 py-1.5 rounded-lg text-xs font-medium text-slate-200 inline-flex items-center gap-1.5 hover:text-white"
                                 >
                                   <i data-lucide="maximize-2" class="w-3.5 h-3.5 text-slate-400"></i>
                                   <span>Inspect & Review</span>
@@ -1088,9 +1095,17 @@ export function createClientPortalController({ rootEl, token, showToast }) {
     });
 
     rootEl.querySelectorAll("[data-inspect-file]").forEach((el) => {
-      el.addEventListener("click", () => {
+      el.addEventListener("click", (e) => {
+        if (e.target.closest("[data-quick-approve]") || e.target.closest("[data-portal-download]")) {
+          return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
         const fid = el.getAttribute("data-inspect-file");
-        activeFileModal = files.find((f) => f.id === fid) || null;
+        if (!fid) return;
+        const allFiles = (portalData?.files || []).concat(visibleFiles || []).concat(files || []);
+        activeFileModal =
+          allFiles.find((f) => f && (String(f.id) === String(fid) || f.name === fid)) || null;
         if (activeFileModal && isCodeFile(activeFileModal.name, activeFileModal.mimeType)) {
           clientCodePreviewMode = isHtmlFile(activeFileModal.name) ? "render" : "code";
         }
@@ -1114,7 +1129,7 @@ export function createClientPortalController({ rootEl, token, showToast }) {
       btn.addEventListener("click", async (e) => {
         e.stopPropagation();
         const fid = btn.getAttribute("data-portal-download");
-        const target = files.find((f) => f.id === fid);
+        const target = files.find((f) => String(f.id) === String(fid) || f.name === fid);
         if (target) await triggerClientDownload(target);
       });
     });
@@ -1125,12 +1140,20 @@ export function createClientPortalController({ rootEl, token, showToast }) {
         activeFileModal = null;
         render();
       });
+      document.getElementById("client-modal-backdrop")?.addEventListener("click", (e) => {
+        if (e.target.id === "client-modal-backdrop") {
+          activeFileModal = null;
+          render();
+        }
+      });
       document
         .getElementById("modal-client-download")
         ?.addEventListener("click", () => triggerClientDownload(activeFileModal));
 
       if (
         activeFileModal.category === "VIDEO" &&
+        activeFileModal.url &&
+        typeof activeFileModal.url === "string" &&
         activeFileModal.url.includes("studio-walkthrough.mp4")
       ) {
         cleanupVideoCanvas = mountSampleCinemaCanvas(
@@ -1190,10 +1213,11 @@ export function createClientPortalController({ rootEl, token, showToast }) {
 }
 
 function renderClientFileModal(file, share, allFeedback, clientReviewerName) {
-  const fileFeedback = allFeedback.filter((fb) => fb.fileId === file.id);
+  if (!file) return "";
+  const fileFeedback = (allFeedback || []).filter((fb) => fb && String(fb.fileId) === String(file.id));
 
   return `
-    <div class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 lg:p-8">
+    <div id="client-modal-backdrop" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 lg:p-8">
       <div class="glass-modal w-full max-w-6xl h-[92dvh] lg:h-[86vh] rounded-2xl overflow-y-auto lg:overflow-hidden flex flex-col lg:flex-row animate-modal">
         <!-- Left Media Stage -->
         <div class="flex-1 bg-slate-950/90 flex flex-col min-h-[250px] sm:min-h-[340px] lg:min-h-0 border-b lg:border-b-0 lg:border-r border-white/[0.08]">
@@ -1222,11 +1246,11 @@ function renderClientFileModal(file, share, allFeedback, clientReviewerName) {
           <div class="flex-1 flex items-center justify-center p-3 sm:p-6 overflow-auto min-h-[210px]">
             ${
               file.category === "IMAGE"
-                ? `<img src="${escapeHtml(file.url)}" alt="${escapeHtml(
+                ? `<img src="${escapeHtml(file.url || '')}" alt="${escapeHtml(
                     file.name
                   )}" class="max-w-full max-h-[52vh] lg:max-h-full object-contain rounded-lg shadow-2xl" />`
                 : file.category === "VIDEO"
-                ? file.url.includes("studio-walkthrough.mp4")
+                ? Boolean(file.url && typeof file.url === "string" && file.url.includes("studio-walkthrough.mp4"))
                   ? `<div class="w-full max-w-3xl space-y-3">
                       <canvas id="sample-cinema-canvas" width="960" height="540" class="w-full rounded-xl border border-white/10 shadow-2xl bg-black"></canvas>
                       <div class="glass-panel px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl flex items-center gap-3 sm:gap-4">
@@ -1236,7 +1260,7 @@ function renderClientFileModal(file, share, allFeedback, clientReviewerName) {
                       </div>
                     </div>`
                   : `<video src="${escapeHtml(
-                      file.url
+                      file.url || ''
                     )}" controls autoplay playsinline class="max-w-full max-h-[52vh] lg:max-h-full rounded-xl border border-white/10 shadow-2xl"></video>`
                 : isHtmlFile(file.name)
                 ? `
@@ -1256,7 +1280,7 @@ function renderClientFileModal(file, share, allFeedback, clientReviewerName) {
                       ${
                         clientCodePreviewMode === "code"
                           ? renderCodeViewerContainer(file)
-                          : `<iframe src="${escapeHtml(file.url)}" class="w-full h-[48vh] lg:h-full rounded-xl border border-white/10 bg-white"></iframe>`
+                          : `<iframe src="${escapeHtml(file.url || '')}" class="w-full h-[48vh] lg:h-full rounded-xl border border-white/10 bg-white"></iframe>`
                       }
                     </div>
                   </div>
@@ -1264,7 +1288,7 @@ function renderClientFileModal(file, share, allFeedback, clientReviewerName) {
                 : isCodeFile(file.name, file.mimeType)
                 ? renderCodeViewerContainer(file)
                 : `<iframe src="${escapeHtml(
-                    file.url
+                    file.url || ''
                   )}" class="w-full h-[48vh] lg:h-full rounded-xl border border-white/10 bg-white"></iframe>`
             }
           </div>

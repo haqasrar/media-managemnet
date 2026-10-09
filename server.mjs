@@ -354,7 +354,7 @@ function generateSamplePdfBuffer() {
     "0 -16 Td (- Curtain Wall Mullion Detail: 4500 x 3000 px, Architectural Ortho) Tj",
     "0 -16 Td (- Director Walkthrough Cut: 4K UHD 24fps Master Stream) Tj",
     "0 -32 Td /F1 13 Tf (2. Client Review & Approval Protocol) Tj",
-    "/F2 11 Tf 0 -20 Td (Please inspect each asset in the shared Tech Titans Client Portal.) Tj",
+    "/F2 11 Tf 0 -20 Td (Please inspect each asset in the Secure Sharing Client Portal by Team Tech Titans.) Tj",
     "0 -16 Td (Use the 'Approve Deliverable' or 'Request Revision' controls on the right panel) Tj",
     "0 -16 Td (to log frame-accurate or print-retouching notes directly to our studio workspace.) Tj",
     "0 -32 Td /F1 13 Tf (3. Storage & Delivery Security) Tj",

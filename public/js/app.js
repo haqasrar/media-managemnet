@@ -533,13 +533,13 @@ function renderGoogleLoginScreen() {
               <img
                 data-appex-logo="mark"
                 src="/assets/appex-logo.webp"
-                alt="Tech Titans Logo"
+                alt="Secure Sharing Logo"
                 class="w-full h-full object-contain drop-shadow-[0_2px_6px_rgba(239,68,68,0.25)]"
               />
             </div>
             <div>
-              <div class="text-xs sm:text-sm font-bold tracking-wider text-white uppercase leading-none">TECH TITANS</div>
-              <div class="text-[9px] sm:text-[10px] font-mono-code text-slate-300 tracking-wider mt-1">MEDIA VAULT & CLIENT PORTAL</div>
+              <div class="text-xs sm:text-sm font-bold tracking-wider text-white uppercase leading-none">SECURE SHARING</div>
+              <div class="text-[9px] sm:text-[10px] font-mono-code text-slate-300 tracking-wider mt-1">BY TECH TITANS • MEDIA & CODE VAULT</div>
             </div>
           </div>
         </header>
@@ -621,7 +621,9 @@ function renderGoogleLoginScreen() {
         <!-- 3. Bottom Footer — Pinned at the very bottom of the screen -->
         <footer class="relative z-10 w-full px-4 sm:px-7 py-3.5 sm:py-4 border-t border-white/[0.1] bg-black/30 backdrop-blur-md flex flex-wrap items-center justify-between gap-2 text-[11px] sm:text-xs">
           <div class="flex items-center gap-1.5 sm:gap-2 text-slate-300">
-            <span class="font-medium">© Tech Titans</span>
+            <span class="font-medium">© Secure Sharing</span>
+            <span class="text-slate-600">•</span>
+            <span class="text-slate-300 font-medium">Team Tech Titans</span>
             <span class="text-slate-600">•</span>
             <span class="text-slate-400">Mohammad Asrar, Punit Badyal And Neyashri A</span>
           </div>
@@ -635,7 +637,7 @@ function renderGoogleLoginScreen() {
           <!-- Generated Studio Background Image -->
           <img
             src="/assets/appex-studio-hero.jpg"
-            alt="Tech Titans Production Suite"
+            alt="Secure Sharing Suite"
             class="absolute inset-0 w-full h-full object-cover object-center"
           />
           <!-- Balanced Vignette Gradients -->
@@ -645,7 +647,7 @@ function renderGoogleLoginScreen() {
           <div class="relative z-10 flex items-center justify-between gap-4 w-full">
             <div class="glass-panel px-3.5 py-1.5 rounded-full text-[11px] font-mono-code text-slate-200 inline-flex items-center gap-2">
               <span class="w-2 h-2 rounded-full bg-red-500 shrink-0"></span>
-              <span>TECH TITANS • CREATIVE MEDIA WORKSPACE</span>
+              <span>SECURE SHARING • TEAM TECH TITANS</span>
             </div>
           </div>
 
@@ -732,7 +734,7 @@ function renderNewUserOnboardingModal(user) {
         <div class="px-6 py-4 border-b border-white/[0.08] flex items-center justify-between">
           <div class="flex items-center gap-2.5">
             ${GOOGLE_LOGO_SVG}
-            <span class="text-sm font-semibold text-white">Complete Your Profile — Tech Titans</span>
+            <span class="text-sm font-semibold text-white">Complete Your Profile — Secure Sharing</span>
           </div>
         </div>
 
@@ -768,7 +770,7 @@ function renderNewUserOnboardingModal(user) {
             </div>
 
             <button type="submit" class="btn-studio-primary w-full py-2.5 rounded-lg text-xs flex items-center justify-center gap-2">
-              <span>Continue to Tech Titans</span>
+              <span>Continue to Secure Sharing</span>
             </button>
           </form>
         </div>
@@ -784,7 +786,7 @@ function bindNewUserOnboardingEvents() {
     const displayName = nameInput ? nameInput.value.trim() : "";
     if (!displayName) return;
     state.user = completeNewUserOnboarding(state.user, displayName);
-    showToast(`Welcome to Tech Titans, ${state.user.displayName} (5.0 GB Free)`, "success");
+    showToast(`Welcome to Secure Sharing, ${state.user.displayName} (5.0 GB Free)`, "success");
     navigateTo("/dashboard");
   });
 }
@@ -910,15 +912,13 @@ function renderDashboard() {
                 <img
                   data-appex-logo="mark"
                   src="/assets/appex-logo.webp"
-                  alt="Tech Titans"
+                  alt="Secure Sharing"
                   class="w-full h-full object-contain"
                 />
               </div>
               <div class="min-w-0">
-                <div class="text-sm font-bold text-white tracking-wider leading-none truncate">TECH TITANS</div>
-                <div class="text-[10px] font-mono-code text-slate-400 mt-1 truncate max-w-[135px]">${escapeHtml(
-                  state.user?.studioName || "Tech Titans"
-                )}</div>
+                <div class="text-sm font-bold text-white tracking-wider leading-none truncate">SECURE SHARING</div>
+                <div class="text-[10px] font-mono-code text-slate-400 mt-1 truncate max-w-[135px]">Team Tech Titans</div>
               </div>
             </div>
             <div class="flex items-center gap-1.5 shrink-0">
@@ -1121,7 +1121,7 @@ function renderDashboard() {
                 <img
                   data-appex-logo="mark"
                   src="/assets/appex-logo.webp"
-                  alt="Tech Titans"
+                  alt="Secure Sharing"
                   class="w-full h-full object-contain"
                 />
               </div>
@@ -2465,7 +2465,7 @@ function renderFirebaseConfigModal() {
         </div>
 
         <p class="text-xs text-slate-400 leading-relaxed">
-          Paste your Firebase Web App credentials below (or in <code class="text-slate-200 font-mono-code">.env.local</code>) to connect live Firebase Google OAuth and your 5 GB Firebase Cloud Storage bucket. When blank, Tech Titans automatically runs in Hybrid Local Storage mode.
+          Paste your Firebase Web App credentials below (or in <code class="text-slate-200 font-mono-code">.env.local</code>) to connect live Firebase Google OAuth and your 5 GB Firebase Cloud Storage bucket. When blank, Secure Sharing automatically runs in Hybrid Local Storage mode.
         </p>
 
         <form id="firebase-config-form" class="space-y-3">

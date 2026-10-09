@@ -669,7 +669,7 @@ export function createClientPortalController({ rootEl, token, showToast }) {
                 <img
                   data-appex-logo="mark"
                   src="/assets/appex-logo.webp"
-                  alt="Tech Titans"
+                  alt="Secure Sharing"
                   class="w-full h-full object-contain"
                 />
               </div>
@@ -679,7 +679,7 @@ export function createClientPortalController({ rootEl, token, showToast }) {
                     share.studioName || "Tech Titans"
                   )}</span>
                   <span class="text-slate-600">•</span>
-                  <span class="text-[10px] sm:text-xs text-slate-400">Client Review Portal</span>
+                  <span class="text-[10px] sm:text-xs text-slate-400">Secure Sharing Client Portal</span>
                 </div>
                 <h1 class="text-sm sm:text-base font-semibold text-white tracking-tight truncate">${escapeHtml(
                   share.title
@@ -1039,7 +1039,7 @@ export function createClientPortalController({ rootEl, token, showToast }) {
 
         <!-- Client Portal Footer -->
         <footer class="px-4 sm:px-6 py-4 border-t border-white/[0.06] text-center text-xs text-slate-400">
-          <span>Powered by <strong class="text-slate-200">Tech Titans</strong> • </span>
+          <span>Secure Sharing • Team <strong class="text-slate-200">Tech Titans</strong>: </span>
           <span>Mohammad Asrar, Punit Badyal And Neyashri A</span>
         </footer>
       </div>

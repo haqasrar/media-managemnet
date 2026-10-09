@@ -1031,6 +1031,21 @@ export function createClientPortalController({ rootEl, token, showToast }) {
 
                                 <div class="flex items-center gap-1.5">
                                   ${
+                                    isHtmlFile(file.name)
+                                      ? `<button
+                                          type="button"
+                                          data-open-html-window="${escapeHtml(file.id || file.name)}"
+                                          data-file-index="${fileIdx}"
+                                          data-file-name="${escapeHtml(file.name)}"
+                                          data-file-id="${escapeHtml(file.id || file.name)}"
+                                          class="glass-button px-2.5 py-1.5 rounded-lg text-xs text-sky-300 hover:text-white"
+                                          title="Open Webpage in New Tab"
+                                        >
+                                          <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
+                                        </button>`
+                                      : ""
+                                  }
+                                  ${
                                     share.allowFeedback
                                       ? `<button
                                           data-quick-approve="${escapeHtml(file.id)}"

@@ -28,8 +28,8 @@ import {
   renderCodeCardThumbnail,
   renderCodeViewerContainer,
   fetchAndRenderCodePreview,
-} from "./ui-helpers.js?v=15";
-import { createClientPortalController } from "./client-portal.js?v=15";
+} from "./ui-helpers.js?v=16";
+import { createClientPortalController } from "./client-portal.js?v=16";
 
 const rootEl = document.getElementById("app-root");
 const globalFileInput = document.getElementById("global-file-input");

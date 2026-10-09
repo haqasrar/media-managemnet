@@ -133,6 +133,9 @@ export function createClientPortalController({ rootEl, token, showToast }) {
         );
       }
 
+      for (const f of sharedFiles) {
+        if (!f.id) f.id = `file-${Math.random().toString(36).slice(2, 9)}`;
+      }
       const fileIds = new Set(sharedFiles.map((f) => f.id));
       const feedback = (ws.feedback || []).filter((fb) => fileIds.has(fb.fileId));
       return {
@@ -200,8 +203,12 @@ export function createClientPortalController({ rootEl, token, showToast }) {
     // Merge files (prefer persistent non-blob URL if available, deduplicate by id or name+folderId)
     const fileByKey = new Map();
     const allCandidateFiles = [...(localData.files || []), ...(serverData.files || [])];
-    for (const f of allCandidateFiles) {
-      if (!f || !f.id) continue;
+    for (const rawF of allCandidateFiles) {
+      if (!rawF) continue;
+      const f = { ...rawF };
+      if (!f.id) {
+        f.id = `file-${Math.random().toString(36).slice(2, 9)}`;
+      }
       const normalizedFolderId =
         f.folderId && rootFolderIds.has(f.folderId) ? canonicalRootId : f.folderId;
       const normalizedFile = { ...f, folderId: normalizedFolderId };
@@ -379,7 +386,11 @@ export function createClientPortalController({ rootEl, token, showToast }) {
           }
           if (activeFileModal) {
             activeFileModal =
-              data.files.find((f) => f.id === activeFileModal.id) || activeFileModal;
+              data.files.find(
+                (f) =>
+                  (f.id && f.id === activeFileModal.id) ||
+                  (f.name && f.name === activeFileModal.name)
+              ) || activeFileModal;
           }
           render();
           if (notifyOnNewFiles && nextCount > prevCount) {
@@ -1297,9 +1308,24 @@ export function createClientPortalController({ rootEl, token, showToast }) {
   loadPortal(true);
 }
 
-function renderClientFileModal(file, share, allFeedback, clientReviewerName) {
+function renderClientFileModal(file, share, allFeedback, clientReviewerName, fileList = []) {
   if (!file) return "";
   const fileFeedback = (allFeedback || []).filter((fb) => fb && String(fb.fileId) === String(file.id));
+
+  const currentIdx = fileList.findIndex(
+    (f) => f && (String(f.id) === String(file.id) || f.name === file.name)
+  );
+  const hasPrev = currentIdx > 0;
+  const hasNext = currentIdx >= 0 && currentIdx < fileList.length - 1;
+
+  let htmlSrcDoc = "";
+  if (isHtmlFile(file.name)) {
+    if (file._cachedText) {
+      htmlSrcDoc = file._cachedText;
+    } else if (file.url && file.url.startsWith("data:")) {
+      htmlSrcDoc = decodeDataUrl(file.url);
+    }
+  }
 
   return `
     <div id="client-modal-backdrop" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 lg:p-8">
@@ -1309,11 +1335,42 @@ function renderClientFileModal(file, share, allFeedback, clientReviewerName) {
           <div class="px-3.5 sm:px-5 py-3 sm:py-3.5 border-b border-white/[0.08] flex items-center justify-between gap-2 sm:gap-4">
             <div class="flex items-center gap-2 min-w-0">
               ${renderCategoryBadge(file.category, file.name)}
-              <span class="text-xs sm:text-sm font-medium text-white truncate max-w-[165px] sm:max-w-xs">${escapeHtml(
+              <span class="text-xs sm:text-sm font-medium text-white truncate max-w-[165px] sm:max-w-xs" title="${escapeHtml(file.name)}">${escapeHtml(
                 file.name
               )}</span>
+              ${
+                fileList.length > 1 && currentIdx >= 0
+                  ? `<span class="hidden sm:inline-flex px-2 py-0.5 rounded bg-white/10 text-[10px] font-mono-code text-slate-300">
+                      ${currentIdx + 1} of ${fileList.length}
+                    </span>`
+                  : ""
+              }
             </div>
             <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
+              ${
+                fileList.length > 1
+                  ? `<div class="flex items-center gap-1 bg-white/5 border border-white/10 rounded-lg p-0.5 mr-1">
+                      <button
+                        id="modal-prev-file"
+                        type="button"
+                        ${!hasPrev ? "disabled" : ""}
+                        class="p-1 rounded text-slate-300 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:pointer-events-none transition"
+                        title="Previous Deliverable"
+                      >
+                        <i data-lucide="chevron-left" class="w-4 h-4"></i>
+                      </button>
+                      <button
+                        id="modal-next-file"
+                        type="button"
+                        ${!hasNext ? "disabled" : ""}
+                        class="p-1 rounded text-slate-300 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:pointer-events-none transition"
+                        title="Next Deliverable"
+                      >
+                        <i data-lucide="chevron-right" class="w-4 h-4"></i>
+                      </button>
+                    </div>`
+                  : ""
+              }
               ${
                 share.allowDownload
                   ? `<button id="modal-client-download" class="glass-button px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium text-slate-200 inline-flex items-center gap-1.5">
@@ -1322,7 +1379,7 @@ function renderClientFileModal(file, share, allFeedback, clientReviewerName) {
                     </button>`
                   : ""
               }
-              <button id="close-client-modal" class="glass-button p-1.5 rounded-lg text-slate-400 hover:text-white">
+              <button id="close-client-modal" class="glass-button p-1.5 rounded-lg text-slate-400 hover:text-white" title="Close Modal">
                 <i data-lucide="x" class="w-4 h-4"></i>
               </button>
             </div>
@@ -1365,7 +1422,7 @@ function renderClientFileModal(file, share, allFeedback, clientReviewerName) {
                       ${
                         clientCodePreviewMode === "code"
                           ? renderCodeViewerContainer(file)
-                          : `<iframe src="${escapeHtml(file.url || '')}" class="w-full h-[48vh] lg:h-full rounded-xl border border-white/10 bg-white"></iframe>`
+                          : `<iframe ${htmlSrcDoc ? `srcdoc="${escapeHtml(htmlSrcDoc)}"` : ""} src="${escapeHtml(file.url || '')}" sandbox="allow-scripts allow-same-origin allow-forms" class="w-full h-[48vh] lg:h-full rounded-xl border border-white/10 bg-white"></iframe>`
                       }
                     </div>
                   </div>

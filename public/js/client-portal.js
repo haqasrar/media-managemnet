@@ -1423,7 +1423,7 @@ function renderClientFileModal(file, share, allFeedback, clientReviewerName, fil
                 : isHtmlFile(file.name)
                 ? `
                   <div class="w-full h-full flex flex-col space-y-2.5">
-                    <div class="flex items-center justify-between px-1 shrink-0">
+                    <div class="flex items-center justify-between px-1 shrink-0 flex-wrap gap-2">
                       <div class="inline-flex rounded-lg bg-black/50 border border-white/10 p-0.5 text-xs font-mono-code">
                         <button id="btn-portal-html-render" type="button" class="px-2.5 py-1 rounded-md transition ${clientCodePreviewMode === 'code' ? 'text-slate-400 hover:text-white' : 'bg-white/15 text-white font-medium border border-white/10'}">
                           <span class="inline-flex items-center gap-1.5"><i data-lucide="eye" class="w-3.5 h-3.5 text-amber-400"></i> Rendered View</span>
@@ -1432,13 +1432,26 @@ function renderClientFileModal(file, share, allFeedback, clientReviewerName, fil
                           <span class="inline-flex items-center gap-1.5"><i data-lucide="code-2" class="w-3.5 h-3.5 text-emerald-400"></i> Source Code</span>
                         </button>
                       </div>
-                      <span class="text-[11px] font-mono-code text-slate-400">HTML Review</span>
+                      <div class="flex items-center gap-2">
+                        <a
+                          id="btn-open-html-tab"
+                          href="${escapeHtml(file._livePreviewBlobUrl || file.url || '#')}"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          class="px-2.5 py-1 rounded-lg text-xs font-mono-code glass-button text-sky-300 hover:text-white inline-flex items-center gap-1.5"
+                          title="Open live webpage in new tab"
+                        >
+                          <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
+                          <span>Open in New Tab</span>
+                        </a>
+                        <span class="text-[11px] font-mono-code text-slate-400 hidden sm:inline">HTML Deliverable</span>
+                      </div>
                     </div>
-                    <div class="flex-1 min-h-0">
+                    <div class="flex-1 min-h-0 relative w-full h-[50vh] lg:h-full rounded-xl overflow-hidden border border-white/10 bg-white shadow-2xl">
                       ${
                         clientCodePreviewMode === "code"
                           ? renderCodeViewerContainer(file)
-                          : `<iframe ${htmlSrcDoc ? `srcdoc="${escapeHtml(htmlSrcDoc)}"` : ""} src="${escapeHtml(file.url || '')}" sandbox="allow-scripts allow-same-origin allow-forms" class="w-full h-[48vh] lg:h-full rounded-xl border border-white/10 bg-white"></iframe>`
+                          : `<iframe id="client-portal-html-iframe" src="${escapeHtml(file._livePreviewBlobUrl || file.url || '')}" class="w-full h-full border-0 bg-white" title="${escapeHtml(file.name)}"></iframe>`
                       }
                     </div>
                   </div>

@@ -1225,6 +1225,23 @@ export function createClientPortalController({ rootEl, token, showToast }) {
       });
     });
 
+    rootEl.querySelectorAll("[data-open-html-window]").forEach((btn) => {
+      btn.addEventListener("click", async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const targetFile = resolveFileTarget(btn);
+        if (targetFile) {
+          showToast(`Opening ${targetFile.name} in new tab…`, "info");
+          const liveUrl = await getHtmlFileBlobUrl(targetFile);
+          if (liveUrl) {
+            window.open(liveUrl, "_blank");
+          } else {
+            showToast("Unable to load HTML preview URL", "error");
+          }
+        }
+      });
+    });
+
     // Modal bindings
     if (activeFileModal) {
       document.getElementById("close-client-modal")?.addEventListener("click", () => {
@@ -1285,6 +1302,21 @@ export function createClientPortalController({ rootEl, token, showToast }) {
             fetchAndRenderCodePreview(activeFileModal, bodyEl, statsEl, copyBtn);
           }
         }
+      }
+
+      if (isHtmlFile(activeFileModal.name)) {
+        const iframeEl = document.getElementById("client-portal-html-iframe");
+        const openTabLink = document.getElementById("btn-open-html-tab");
+        getHtmlFileBlobUrl(activeFileModal).then((liveUrl) => {
+          if (liveUrl) {
+            if (iframeEl && clientCodePreviewMode === "render") {
+              iframeEl.src = liveUrl;
+            }
+            if (openTabLink) {
+              openTabLink.href = liveUrl;
+            }
+          }
+        });
       }
 
       document.getElementById("btn-portal-html-render")?.addEventListener("click", () => {

@@ -42,7 +42,7 @@ export function formatRelativeTime(isoString) {
 }
 
 export function escapeHtml(str = "") {
-  return String(str)
+  return String(str == null ? "" : str)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
@@ -655,7 +655,7 @@ export async function fetchAndRenderCodePreview(file, containerEl, statsEl, copy
   if (window.lucide) window.lucide.createIcons();
 }
 
-function decodeDataUrl(dataUrl = "") {
+export function decodeDataUrl(dataUrl = "") {
   try {
     const commaIdx = dataUrl.indexOf(",");
     if (commaIdx === -1) return null;

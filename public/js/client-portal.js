@@ -14,7 +14,8 @@ import {
   renderCodeCardThumbnail,
   renderCodeViewerContainer,
   fetchAndRenderCodePreview,
-} from "./ui-helpers.js?v=15";
+  decodeDataUrl,
+} from "./ui-helpers.js?v=16";
 import { hydrateMediaFilesFromVault } from "./firebase-client.js?v=15";
 
 export function createClientPortalController({ rootEl, token, showToast }) {
@@ -918,18 +919,26 @@ export function createClientPortalController({ rootEl, token, showToast }) {
                       </p>
                     </div>`
                   : visibleFiles
-                      .map((file) => {
+                      .map((file, fileIdx) => {
                         const fileFeedbackCount = feedback.filter(
                           (fb) => fb.fileId === file.id
                         ).length;
                         return `
                           <div
-                            data-inspect-file="${escapeHtml(file.id)}"
+                            data-deliverable-card="true"
+                            data-inspect-file="${escapeHtml(file.id || file.name)}"
+                            data-file-index="${fileIdx}"
+                            data-file-name="${escapeHtml(file.name)}"
+                            data-file-id="${escapeHtml(file.id || file.name)}"
                             class="glass-card rounded-2xl overflow-hidden flex flex-col group cursor-pointer hover:border-white/20 transition"
                           >
                             <!-- Media Thumbnail Area -->
                             <div
-                              class="relative h-48 sm:h-52 bg-slate-950/70 border-b border-white/[0.07] overflow-hidden flex items-center justify-center"
+                              data-inspect-file="${escapeHtml(file.id || file.name)}"
+                              data-file-index="${fileIdx}"
+                              data-file-name="${escapeHtml(file.name)}"
+                              data-file-id="${escapeHtml(file.id || file.name)}"
+                              class="relative h-48 sm:h-52 bg-slate-950/70 border-b border-white/[0.07] overflow-hidden flex items-center justify-center cursor-pointer"
                             >
                               ${
                                 file.category === "IMAGE"
@@ -993,7 +1002,10 @@ export function createClientPortalController({ rootEl, token, showToast }) {
                               <div class="pt-3 border-t border-white/[0.07] flex items-center justify-between gap-2">
                                 <button
                                   type="button"
-                                  data-inspect-file="${escapeHtml(file.id)}"
+                                  data-inspect-file="${escapeHtml(file.id || file.name)}"
+                                  data-file-index="${fileIdx}"
+                                  data-file-name="${escapeHtml(file.name)}"
+                                  data-file-id="${escapeHtml(file.id || file.name)}"
                                   class="glass-button px-3 py-1.5 rounded-lg text-xs font-medium text-slate-200 inline-flex items-center gap-1.5 hover:text-white"
                                 >
                                   <i data-lucide="maximize-2" class="w-3.5 h-3.5 text-slate-400"></i>
@@ -1051,11 +1063,74 @@ export function createClientPortalController({ rootEl, token, showToast }) {
         </footer>
       </div>
 
-      ${activeFileModal ? renderClientFileModal(activeFileModal, share, feedback, clientReviewerName) : ""}
+      ${activeFileModal ? renderClientFileModal(activeFileModal, share, feedback, clientReviewerName, visibleFiles) : ""}
     `;
 
     if (window.lucide) window.lucide.createIcons();
     enhanceAppexLogos();
+
+    // Helper to open modal for a deliverable file
+    const openFileModal = (targetFile) => {
+      if (!targetFile) return;
+      activeFileModal = targetFile;
+      if (isCodeFile(targetFile.name, targetFile.mimeType)) {
+        clientCodePreviewMode = isHtmlFile(targetFile.name) ? "render" : "code";
+      }
+      render();
+    };
+
+    // Infallible file target resolution: index -> name -> id
+    const resolveFileTarget = (targetEl) => {
+      if (!targetEl) return null;
+      const el =
+        targetEl.closest("[data-file-index]") ||
+        targetEl.closest("[data-inspect-file]") ||
+        targetEl.closest("[data-deliverable-card]") ||
+        targetEl;
+
+      // 1. Direct index in visibleFiles (fastest & 100% accurate)
+      const idxAttr = el.getAttribute("data-file-index");
+      if (idxAttr !== null && idxAttr !== undefined && idxAttr !== "" && !isNaN(Number(idxAttr))) {
+        const idx = Number(idxAttr);
+        if (visibleFiles && visibleFiles[idx]) {
+          return visibleFiles[idx];
+        }
+      }
+
+      // 2. File name lookup
+      const nameAttr = el.getAttribute("data-file-name");
+      if (nameAttr) {
+        const byName =
+          visibleFiles.find((f) => f && f.name === nameAttr) ||
+          files.find((f) => f && f.name === nameAttr) ||
+          portalData?.files?.find((f) => f && f.name === nameAttr);
+        if (byName) return byName;
+      }
+
+      // 3. File ID / inspect-file fallback
+      const fid = el.getAttribute("data-file-id") || el.getAttribute("data-inspect-file");
+      if (fid && fid !== "undefined" && fid !== "null") {
+        const byId =
+          visibleFiles.find((f) => f && (String(f.id) === String(fid) || f.name === fid)) ||
+          files.find((f) => f && (String(f.id) === String(fid) || f.name === fid)) ||
+          portalData?.files?.find((f) => f && (String(f.id) === String(fid) || f.name === fid));
+        if (byId) return byId;
+      }
+
+      return null;
+    };
+
+    const handleInspectClick = (e, triggerEl) => {
+      if (e.target.closest("[data-quick-approve]") || e.target.closest("[data-portal-download]")) {
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      const targetFile = resolveFileTarget(triggerEl || e.target);
+      if (targetFile) {
+        openFileModal(targetFile);
+      }
+    };
 
     // Bind events
     document
@@ -1094,23 +1169,12 @@ export function createClientPortalController({ rootEl, token, showToast }) {
       });
     });
 
+    // Make deliverable cards and inspect buttons clickable
+    rootEl.querySelectorAll("[data-deliverable-card]").forEach((card) => {
+      card.addEventListener("click", (e) => handleInspectClick(e, card));
+    });
     rootEl.querySelectorAll("[data-inspect-file]").forEach((el) => {
-      el.addEventListener("click", (e) => {
-        if (e.target.closest("[data-quick-approve]") || e.target.closest("[data-portal-download]")) {
-          return;
-        }
-        e.preventDefault();
-        e.stopPropagation();
-        const fid = el.getAttribute("data-inspect-file");
-        if (!fid) return;
-        const allFiles = (portalData?.files || []).concat(visibleFiles || []).concat(files || []);
-        activeFileModal =
-          allFiles.find((f) => f && (String(f.id) === String(fid) || f.name === fid)) || null;
-        if (activeFileModal && isCodeFile(activeFileModal.name, activeFileModal.mimeType)) {
-          clientCodePreviewMode = isHtmlFile(activeFileModal.name) ? "render" : "code";
-        }
-        render();
-      });
+      el.addEventListener("click", (e) => handleInspectClick(e, el));
     });
 
     rootEl.querySelectorAll("[data-quick-approve]").forEach((btn) => {
@@ -1144,6 +1208,27 @@ export function createClientPortalController({ rootEl, token, showToast }) {
         if (e.target.id === "client-modal-backdrop") {
           activeFileModal = null;
           render();
+        }
+      });
+
+      // Carousel Prev / Next File Controls
+      document.getElementById("modal-prev-file")?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const currentIdx = visibleFiles.findIndex(
+          (f) => f && (f.id === activeFileModal.id || f.name === activeFileModal.name)
+        );
+        if (currentIdx > 0) {
+          openFileModal(visibleFiles[currentIdx - 1]);
+        }
+      });
+
+      document.getElementById("modal-next-file")?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const currentIdx = visibleFiles.findIndex(
+          (f) => f && (f.id === activeFileModal.id || f.name === activeFileModal.name)
+        );
+        if (currentIdx >= 0 && currentIdx < visibleFiles.length - 1) {
+          openFileModal(visibleFiles[currentIdx + 1]);
         }
       });
       document

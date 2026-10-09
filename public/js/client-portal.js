@@ -8,6 +8,12 @@ import {
   renderCategoryBadge,
   mountSampleCinemaCanvas,
   enhanceAppexLogos,
+  isCodeFile,
+  isHtmlFile,
+  getCodeLanguage,
+  renderCodeCardThumbnail,
+  renderCodeViewerContainer,
+  fetchAndRenderCodePreview,
 } from "./ui-helpers.js?v=12";
 import { hydrateMediaFilesFromVault } from "./firebase-client.js?v=12";
 
@@ -27,6 +33,7 @@ export function createClientPortalController({ rootEl, token, showToast }) {
   let currentSubfolderId = null;
   let activeCategoryFilter = "ALL";
   let activeFileModal = null;
+  let clientCodePreviewMode = "render";
   let cleanupVideoCanvas = null;
   let liveSyncTimer = null;
   let isDestroyed = false;
@@ -944,6 +951,8 @@ export function createClientPortalController({ rootEl, token, showToast }) {
                                         </div>
                                       </div>
                                     </div>`
+                                  : isCodeFile(file.name, file.mimeType)
+                                  ? renderCodeCardThumbnail(file)
                                   : `<div class="w-full h-full flex flex-col items-center justify-center p-6 bg-gradient-to-b from-slate-900/50 to-slate-950/90">
                                       <div class="w-12 h-14 rounded-lg bg-amber-500/10 border border-amber-500/25 flex items-center justify-center text-amber-300 mb-2">
                                         <i data-lucide="file-text" class="w-6 h-6"></i>
@@ -954,7 +963,7 @@ export function createClientPortalController({ rootEl, token, showToast }) {
                                     </div>`
                               }
                               <div class="absolute top-3 left-3 flex items-center gap-1.5">
-                                ${renderCategoryBadge(file.category)}
+                                ${renderCategoryBadge(file.category, file.name)}
                               </div>
                               <div class="absolute top-3 right-3">
                                 ${renderApprovalBadge(file.approvalStatus)}
@@ -1082,6 +1091,9 @@ export function createClientPortalController({ rootEl, token, showToast }) {
       el.addEventListener("click", () => {
         const fid = el.getAttribute("data-inspect-file");
         activeFileModal = files.find((f) => f.id === fid) || null;
+        if (activeFileModal && isCodeFile(activeFileModal.name, activeFileModal.mimeType)) {
+          clientCodePreviewMode = isHtmlFile(activeFileModal.name) ? "render" : "code";
+        }
         render();
       });
     });
@@ -1129,6 +1141,26 @@ export function createClientPortalController({ rootEl, token, showToast }) {
         );
       }
 
+      if (isCodeFile(activeFileModal.name, activeFileModal.mimeType)) {
+        if (!isHtmlFile(activeFileModal.name) || clientCodePreviewMode === "code") {
+          const bodyEl = document.getElementById("code-viewer-body");
+          const statsEl = document.getElementById("code-viewer-stats");
+          const copyBtn = document.getElementById("btn-copy-code");
+          if (bodyEl) {
+            fetchAndRenderCodePreview(activeFileModal, bodyEl, statsEl, copyBtn);
+          }
+        }
+      }
+
+      document.getElementById("btn-portal-html-render")?.addEventListener("click", () => {
+        clientCodePreviewMode = "render";
+        render();
+      });
+      document.getElementById("btn-portal-html-code")?.addEventListener("click", () => {
+        clientCodePreviewMode = "code";
+        render();
+      });
+
       document
         .getElementById("client-review-form")
         ?.addEventListener("submit", async (e) => {
@@ -1167,7 +1199,7 @@ function renderClientFileModal(file, share, allFeedback, clientReviewerName) {
         <div class="flex-1 bg-slate-950/90 flex flex-col min-h-[250px] sm:min-h-[340px] lg:min-h-0 border-b lg:border-b-0 lg:border-r border-white/[0.08]">
           <div class="px-3.5 sm:px-5 py-3 sm:py-3.5 border-b border-white/[0.08] flex items-center justify-between gap-2 sm:gap-4">
             <div class="flex items-center gap-2 min-w-0">
-              ${renderCategoryBadge(file.category)}
+              ${renderCategoryBadge(file.category, file.name)}
               <span class="text-xs sm:text-sm font-medium text-white truncate max-w-[165px] sm:max-w-xs">${escapeHtml(
                 file.name
               )}</span>
@@ -1206,6 +1238,31 @@ function renderClientFileModal(file, share, allFeedback, clientReviewerName) {
                   : `<video src="${escapeHtml(
                       file.url
                     )}" controls autoplay playsinline class="max-w-full max-h-[52vh] lg:max-h-full rounded-xl border border-white/10 shadow-2xl"></video>`
+                : isHtmlFile(file.name)
+                ? `
+                  <div class="w-full h-full flex flex-col space-y-2.5">
+                    <div class="flex items-center justify-between px-1 shrink-0">
+                      <div class="inline-flex rounded-lg bg-black/50 border border-white/10 p-0.5 text-xs font-mono-code">
+                        <button id="btn-portal-html-render" type="button" class="px-2.5 py-1 rounded-md transition ${clientCodePreviewMode === 'code' ? 'text-slate-400 hover:text-white' : 'bg-white/15 text-white font-medium border border-white/10'}">
+                          <span class="inline-flex items-center gap-1.5"><i data-lucide="eye" class="w-3.5 h-3.5 text-amber-400"></i> Rendered View</span>
+                        </button>
+                        <button id="btn-portal-html-code" type="button" class="px-2.5 py-1 rounded-md transition ${clientCodePreviewMode === 'code' ? 'bg-white/15 text-white font-medium border border-white/10' : 'text-slate-400 hover:text-white'}">
+                          <span class="inline-flex items-center gap-1.5"><i data-lucide="code-2" class="w-3.5 h-3.5 text-emerald-400"></i> Source Code</span>
+                        </button>
+                      </div>
+                      <span class="text-[11px] font-mono-code text-slate-400">HTML Review</span>
+                    </div>
+                    <div class="flex-1 min-h-0">
+                      ${
+                        clientCodePreviewMode === "code"
+                          ? renderCodeViewerContainer(file)
+                          : `<iframe src="${escapeHtml(file.url)}" class="w-full h-[48vh] lg:h-full rounded-xl border border-white/10 bg-white"></iframe>`
+                      }
+                    </div>
+                  </div>
+                `
+                : isCodeFile(file.name, file.mimeType)
+                ? renderCodeViewerContainer(file)
                 : `<iframe src="${escapeHtml(
                     file.url
                   )}" class="w-full h-[48vh] lg:h-full rounded-xl border border-white/10 bg-white"></iframe>`

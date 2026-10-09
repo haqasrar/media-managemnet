@@ -60,8 +60,8 @@ function classifyMimeType(mimeType = "", filename = "") {
     return "IMAGE";
   }
   if (
-    lowerMime.startsWith("video/") ||
-    [".mp4", ".webm", ".mov", ".m4v", ".avi", ".mkv"].includes(ext)
+    [".mp4", ".webm", ".mov", ".m4v", ".avi", ".mkv"].includes(ext) ||
+    (lowerMime.startsWith("video/") && ext !== ".ts")
   ) {
     return "VIDEO";
   }
@@ -69,10 +69,48 @@ function classifyMimeType(mimeType = "", filename = "") {
 }
 
 function getDefaultMetaLabel(category, mimeType, filename) {
-  const ext = path.extname(filename).replace(".", "").toUpperCase();
-  if (category === "IMAGE") return `${ext || "RAW"} • High-Res Still`;
-  if (category === "VIDEO") return `${ext || "MP4"} • Studio Video Stream`;
-  return `${ext || "DOC"} • Project Document`;
+  const ext = path.extname(filename).replace(".", "").toLowerCase();
+  const upperExt = ext.toUpperCase() || "DOC";
+  if (category === "IMAGE") return `${upperExt} • High-Res Still`;
+  if (category === "VIDEO") return `${upperExt} • Studio Video Stream`;
+
+  const codeExtMap = {
+    html: "HTML • Web Document",
+    htm: "HTML • Web Document",
+    js: "JS • JavaScript",
+    jsx: "JSX • React Component",
+    ts: "TS • TypeScript",
+    tsx: "TSX • React Component",
+    py: "PY • Python Code",
+    css: "CSS • Stylesheet",
+    scss: "SCSS • Stylesheet",
+    json: "JSON • Data File",
+    java: "JAVA • Java Source",
+    c: "C • C Source",
+    cpp: "CPP • C++ Source",
+    h: "H • Header File",
+    hpp: "HPP • C++ Header",
+    cs: "CS • C# Source",
+    php: "PHP • PHP Script",
+    rb: "RB • Ruby Script",
+    go: "GO • Go Source",
+    rs: "RS • Rust Source",
+    sql: "SQL • Database Script",
+    sh: "SH • Shell Script",
+    bat: "BAT • Batch Script",
+    ps1: "PS1 • PowerShell Script",
+    xml: "XML • XML File",
+    yaml: "YAML • Config File",
+    yml: "YML • Config File",
+    md: "MD • Markdown Doc",
+    txt: "TXT • Plain Text",
+  };
+
+  if (codeExtMap[ext]) {
+    return codeExtMap[ext];
+  }
+
+  return `${upperExt} • Project Document`;
 }
 
 function getDescendantFolderIds(rootFolderId, allFolders) {

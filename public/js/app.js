@@ -22,6 +22,12 @@ import {
   renderCategoryBadge,
   mountSampleCinemaCanvas,
   enhanceAppexLogos,
+  isCodeFile,
+  isHtmlFile,
+  getCodeLanguage,
+  renderCodeCardThumbnail,
+  renderCodeViewerContainer,
+  fetchAndRenderCodePreview,
 } from "./ui-helpers.js?v=12";
 import { createClientPortalController } from "./client-portal.js?v=13";
 
@@ -251,6 +257,7 @@ const state = {
   currentFolderId: null,
   searchQuery: "",
   viewMode: "grid", // grid | table
+  codePreviewMode: "render",
 
   // Upload Queue (disabled blocking loader; instant updates)
   uploadStatus: null,
@@ -960,8 +967,8 @@ function renderDashboard() {
               },
               {
                 id: "DOCUMENT",
-                label: "Documents & PDFs",
-                icon: "file-text",
+                label: "Documents & Code",
+                icon: "file-code",
                 count: activeFiles.filter((f) => f.category === "DOCUMENT").length,
               },
             ]
@@ -1676,6 +1683,8 @@ function renderFilesGridView(files) {
                           </div>
                         </div>
                       </div>`
+                    : isCodeFile(file.name, file.mimeType)
+                    ? renderCodeCardThumbnail(file)
                     : `<div class="w-full h-full flex flex-col items-center justify-center p-4 bg-gradient-to-b from-slate-900/40 to-slate-950">
                         <div class="w-11 h-13 rounded-lg bg-amber-500/10 border border-amber-500/25 flex items-center justify-center text-amber-300 mb-2 p-2.5">
                           <i data-lucide="file-text" class="w-5 h-5"></i>
@@ -1687,7 +1696,7 @@ function renderFilesGridView(files) {
                 }
 
                 <div class="absolute top-2.5 left-2.5 flex items-center gap-1.5">
-                  ${renderCategoryBadge(file.category)}
+                  ${renderCategoryBadge(file.category, file.name)}
                 </div>
                 <div class="absolute top-2.5 right-2.5">
                   ${renderApprovalBadge(file.approvalStatus)}
@@ -1894,7 +1903,8 @@ function renderFilesTableView(files) {
                   </div>
                 </td>
                 <td class="py-3 px-4 hidden sm:table-cell">${renderCategoryBadge(
-                  file.category
+                  file.category,
+                  file.name
                 )}</td>
                 <td class="py-3 px-4 hidden md:table-cell">${renderApprovalBadge(
                   file.approvalStatus
@@ -2305,7 +2315,7 @@ function renderStudioPreviewModal(file) {
         <div class="flex-1 bg-slate-950/90 flex flex-col min-h-[260px] sm:min-h-[360px] lg:min-h-0 border-b lg:border-b-0 lg:border-r border-white/[0.08]">
           <div class="px-3.5 sm:px-5 py-3 sm:py-3.5 border-b border-white/[0.08] flex flex-wrap items-center justify-between gap-2 sm:gap-4">
             <div class="flex items-center gap-2 min-w-0">
-              ${renderCategoryBadge(file.category)}
+              ${renderCategoryBadge(file.category, file.name)}
               <span class="text-xs sm:text-sm font-medium text-white truncate max-w-[160px] sm:max-w-xs">${escapeHtml(
                 file.name
               )}</span>
@@ -2351,6 +2361,31 @@ function renderStudioPreviewModal(file) {
                   : `<video src="${escapeHtml(
                       file.url || ""
                     )}" poster="${escapeHtml(file.posterUrl || "")}" controls autoplay class="max-w-full max-h-[55vh] lg:max-h-full rounded-xl border border-white/10 shadow-2xl"></video>`
+                : isHtmlFile(file.name)
+                ? `
+                  <div class="w-full h-full flex flex-col space-y-2.5">
+                    <div class="flex items-center justify-between px-1 shrink-0">
+                      <div class="inline-flex rounded-lg bg-black/50 border border-white/10 p-0.5 text-xs font-mono-code">
+                        <button id="btn-html-view-render" type="button" class="px-2.5 py-1 rounded-md transition ${state.codePreviewMode === 'code' ? 'text-slate-400 hover:text-white' : 'bg-white/15 text-white font-medium border border-white/10'}">
+                          <span class="inline-flex items-center gap-1.5"><i data-lucide="eye" class="w-3.5 h-3.5 text-amber-400"></i> Rendered View</span>
+                        </button>
+                        <button id="btn-html-view-code" type="button" class="px-2.5 py-1 rounded-md transition ${state.codePreviewMode === 'code' ? 'bg-white/15 text-white font-medium border border-white/10' : 'text-slate-400 hover:text-white'}">
+                          <span class="inline-flex items-center gap-1.5"><i data-lucide="code-2" class="w-3.5 h-3.5 text-emerald-400"></i> Source Code</span>
+                        </button>
+                      </div>
+                      <span class="text-[11px] font-mono-code text-slate-400">HTML Deliverable</span>
+                    </div>
+                    <div class="flex-1 min-h-0">
+                      ${
+                        state.codePreviewMode === "code"
+                          ? renderCodeViewerContainer(file)
+                          : `<iframe src="${escapeHtml(file.url || "")}" class="w-full h-[50vh] lg:h-full rounded-xl border border-white/10 bg-white"></iframe>`
+                      }
+                    </div>
+                  </div>
+                `
+                : isCodeFile(file.name, file.mimeType)
+                ? renderCodeViewerContainer(file)
                 : `<iframe src="${escapeHtml(
                     file.url || ""
                   )}" class="w-full h-[50vh] lg:h-full rounded-xl border border-white/10 bg-white"></iframe>`
@@ -2799,6 +2834,9 @@ function bindDashboardEvents() {
       const file = state.files.find((f) => f.id === id);
       if (file) {
         state.previewFile = file;
+        if (isCodeFile(file.name, file.mimeType)) {
+          state.codePreviewMode = isHtmlFile(file.name) ? "render" : "code";
+        }
         renderDashboard();
       }
     });
@@ -2830,6 +2868,26 @@ function bindDashboardEvents() {
         document.getElementById("studio-cinema-play")
       );
     }
+
+    if (isCodeFile(state.previewFile.name, state.previewFile.mimeType)) {
+      if (!isHtmlFile(state.previewFile.name) || state.codePreviewMode === "code") {
+        const bodyEl = document.getElementById("code-viewer-body");
+        const statsEl = document.getElementById("code-viewer-stats");
+        const copyBtn = document.getElementById("btn-copy-code");
+        if (bodyEl) {
+          fetchAndRenderCodePreview(state.previewFile, bodyEl, statsEl, copyBtn);
+        }
+      }
+    }
+
+    document.getElementById("btn-html-view-render")?.addEventListener("click", () => {
+      state.codePreviewMode = "render";
+      renderDashboard();
+    });
+    document.getElementById("btn-html-view-code")?.addEventListener("click", () => {
+      state.codePreviewMode = "code";
+      renderDashboard();
+    });
   }
 
   // New Folder Modal Events (Instant 0ms Folder Creation)

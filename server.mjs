@@ -105,8 +105,8 @@ function classifyMimeType(mimeType = "", filename = "") {
     return "IMAGE";
   }
   if (
-    lowerMime.startsWith("video/") ||
-    [".mp4", ".webm", ".mov", ".avi", ".mkv", ".m4v"].includes(ext)
+    [".mp4", ".webm", ".mov", ".avi", ".mkv", ".m4v"].includes(ext) ||
+    (lowerMime.startsWith("video/") && ext !== ".ts")
   ) {
     return "VIDEO";
   }
@@ -114,10 +114,48 @@ function classifyMimeType(mimeType = "", filename = "") {
 }
 
 function getDefaultMetaLabel(category, mimeType, filename) {
-  const ext = path.extname(filename).replace(".", "").toUpperCase() || "FILE";
-  if (category === "IMAGE") return `${ext} • High-Res Image`;
-  if (category === "VIDEO") return `${ext} • Video Stream`;
-  return `${ext} • Document`;
+  const ext = path.extname(filename).replace(".", "").toLowerCase();
+  const upperExt = ext.toUpperCase() || "FILE";
+  if (category === "IMAGE") return `${upperExt} • High-Res Image`;
+  if (category === "VIDEO") return `${upperExt} • Video Stream`;
+
+  const codeExtMap = {
+    html: "HTML • Web Document",
+    htm: "HTML • Web Document",
+    js: "JS • JavaScript",
+    jsx: "JSX • React Component",
+    ts: "TS • TypeScript",
+    tsx: "TSX • React Component",
+    py: "PY • Python Code",
+    css: "CSS • Stylesheet",
+    scss: "SCSS • Stylesheet",
+    json: "JSON • Data File",
+    java: "JAVA • Java Source",
+    c: "C • C Source",
+    cpp: "CPP • C++ Source",
+    h: "H • Header File",
+    hpp: "HPP • C++ Header",
+    cs: "CS • C# Source",
+    php: "PHP • PHP Script",
+    rb: "RB • Ruby Script",
+    go: "GO • Go Source",
+    rs: "RS • Rust Source",
+    sql: "SQL • Database Script",
+    sh: "SH • Shell Script",
+    bat: "BAT • Batch Script",
+    ps1: "PS1 • PowerShell Script",
+    xml: "XML • XML File",
+    yaml: "YAML • Config File",
+    yml: "YML • Config File",
+    md: "MD • Markdown Doc",
+    txt: "TXT • Plain Text",
+  };
+
+  if (codeExtMap[ext]) {
+    return codeExtMap[ext];
+  }
+
+  return `${upperExt} • Document`;
 }
 
 function sendJson(res, statusCode, payload) {
@@ -332,10 +370,47 @@ function generateSamplePdfBuffer() {
 
 const MIME_MAP = {
   ".html": "text/html; charset=utf-8",
+  ".htm": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".js": "application/javascript; charset=utf-8",
   ".mjs": "application/javascript; charset=utf-8",
+  ".cjs": "application/javascript; charset=utf-8",
+  ".ts": "text/plain; charset=utf-8",
+  ".tsx": "text/plain; charset=utf-8",
+  ".jsx": "text/plain; charset=utf-8",
   ".json": "application/json; charset=utf-8",
+  ".jsonc": "application/json; charset=utf-8",
+  ".py": "text/plain; charset=utf-8",
+  ".java": "text/plain; charset=utf-8",
+  ".c": "text/plain; charset=utf-8",
+  ".cpp": "text/plain; charset=utf-8",
+  ".cc": "text/plain; charset=utf-8",
+  ".cxx": "text/plain; charset=utf-8",
+  ".h": "text/plain; charset=utf-8",
+  ".hpp": "text/plain; charset=utf-8",
+  ".cs": "text/plain; charset=utf-8",
+  ".php": "text/plain; charset=utf-8",
+  ".rb": "text/plain; charset=utf-8",
+  ".go": "text/plain; charset=utf-8",
+  ".rs": "text/plain; charset=utf-8",
+  ".swift": "text/plain; charset=utf-8",
+  ".kt": "text/plain; charset=utf-8",
+  ".sql": "text/plain; charset=utf-8",
+  ".sh": "text/plain; charset=utf-8",
+  ".bash": "text/plain; charset=utf-8",
+  ".zsh": "text/plain; charset=utf-8",
+  ".bat": "text/plain; charset=utf-8",
+  ".ps1": "text/plain; charset=utf-8",
+  ".xml": "text/xml; charset=utf-8",
+  ".yaml": "text/plain; charset=utf-8",
+  ".yml": "text/plain; charset=utf-8",
+  ".toml": "text/plain; charset=utf-8",
+  ".ini": "text/plain; charset=utf-8",
+  ".env": "text/plain; charset=utf-8",
+  ".md": "text/plain; charset=utf-8",
+  ".txt": "text/plain; charset=utf-8",
+  ".log": "text/plain; charset=utf-8",
+  ".csv": "text/plain; charset=utf-8",
   ".svg": "image/svg+xml",
   ".png": "image/png",
   ".jpg": "image/jpeg",
@@ -346,7 +421,6 @@ const MIME_MAP = {
   ".mp4": "video/mp4",
   ".webm": "video/webm",
   ".mov": "video/quicktime",
-  ".txt": "text/plain; charset=utf-8",
 };
 
 function serveFileWithRange(req, res, filePath, contentType) {

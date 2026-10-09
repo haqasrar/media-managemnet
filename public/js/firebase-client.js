@@ -238,8 +238,8 @@ function classifyFileCategory(mimeType = "", filename = "") {
     return "IMAGE";
   }
   if (
-    lowerMime.startsWith("video/") ||
-    [".mp4", ".webm", ".mov", ".m4v", ".avi", ".mkv"].includes(ext)
+    [".mp4", ".webm", ".mov", ".m4v", ".avi", ".mkv"].includes(ext) ||
+    (lowerMime.startsWith("video/") && ext !== ".ts")
   ) {
     return "VIDEO";
   }
@@ -248,11 +248,49 @@ function classifyFileCategory(mimeType = "", filename = "") {
 
 function getDefaultMetaLabel(category, filename = "") {
   const ext = filename.includes(".")
-    ? filename.split(".").pop().toUpperCase()
+    ? filename.split(".").pop().toLowerCase()
     : "";
-  if (category === "IMAGE") return `${ext || "RAW"} • High-Res Still`;
-  if (category === "VIDEO") return `${ext || "MP4"} • Studio Video Stream`;
-  return `${ext || "DOC"} • Project Document`;
+  const upperExt = ext.toUpperCase() || "DOC";
+  if (category === "IMAGE") return `${upperExt} • High-Res Still`;
+  if (category === "VIDEO") return `${upperExt} • Studio Video Stream`;
+
+  const codeExtMap = {
+    html: "HTML • Web Document",
+    htm: "HTML • Web Document",
+    js: "JS • JavaScript",
+    jsx: "JSX • React Component",
+    ts: "TS • TypeScript",
+    tsx: "TSX • React Component",
+    py: "PY • Python Code",
+    css: "CSS • Stylesheet",
+    scss: "SCSS • Stylesheet",
+    json: "JSON • Data File",
+    java: "JAVA • Java Source",
+    c: "C • C Source",
+    cpp: "CPP • C++ Source",
+    h: "H • Header File",
+    hpp: "HPP • C++ Header",
+    cs: "CS • C# Source",
+    php: "PHP • PHP Script",
+    rb: "RB • Ruby Script",
+    go: "GO • Go Source",
+    rs: "RS • Rust Source",
+    sql: "SQL • Database Script",
+    sh: "SH • Shell Script",
+    bat: "BAT • Batch Script",
+    ps1: "PS1 • PowerShell Script",
+    xml: "XML • XML File",
+    yaml: "YAML • Config File",
+    yml: "YML • Config File",
+    md: "MD • Markdown Doc",
+    txt: "TXT • Plain Text",
+  };
+
+  if (codeExtMap[ext]) {
+    return codeExtMap[ext];
+  }
+
+  return `${upperExt} • Project Document`;
 }
 
 // ============================================================================
@@ -549,6 +587,23 @@ export async function uploadMediaFile(
   const fileId = existingId || `file-${Math.random().toString(36).slice(2, 11)}`;
   const totalBytes = Number(file.size) || 0;
 
+  const ext = (file.name.split(".").pop() || "").toLowerCase();
+  const isCode = [
+    "html", "htm", "js", "jsx", "mjs", "cjs", "ts", "tsx", "py", "pyw",
+    "java", "c", "cpp", "cc", "cxx", "h", "hpp", "cs", "php", "rb", "go",
+    "rs", "swift", "kt", "kts", "scala", "sql", "sh", "bash", "zsh", "ps1",
+    "bat", "cmd", "css", "scss", "sass", "less", "json", "jsonc", "xml",
+    "yaml", "yml", "toml", "ini", "env", "md", "markdown", "txt", "log",
+    "dockerfile", "makefile", "vue", "svelte"
+  ].includes(ext);
+
+  let cachedText = null;
+  if (isCode && typeof file.text === "function") {
+    try {
+      cachedText = await file.text();
+    } catch (e) {}
+  }
+
   // Save raw binary Blob immediately in IndexedDB so even immediate refresh keeps the media
   saveMediaToVault({
     id: fileId,
@@ -563,13 +618,14 @@ export async function uploadMediaFile(
     id: fileId,
     name: file.name,
     originalName: file.name,
-    mimeType: file.type || "application/octet-stream",
+    mimeType: file.type || (isCode ? "text/plain; charset=utf-8" : "application/octet-stream"),
     category,
     sizeBytes: totalBytes,
     uploadedBytes: 0,
     uploadProgress: 4,
     uploadStatus: "uploading", // "uploading" | "complete" | "done"
     url: instantBlobUrl,
+    _cachedText: cachedText,
     posterUrl: null,
     storagePath: `uploads/${file.name}`,
     storageProvider: "cloud",

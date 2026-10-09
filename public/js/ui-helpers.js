@@ -1,4 +1,5 @@
 // Studio Formatting & UI Helpers
+import { getMediaFromVault } from "./firebase-client.js";
 
 export function formatBytes(bytes = 0) {
   const n = Number(bytes) || 0;
@@ -242,9 +243,12 @@ export function renderApprovalBadge(status = "PENDING") {
   </span>`;
 }
 
-export function renderCategoryBadge(category = "IMAGE") {
+export function renderCategoryBadge(category = "IMAGE", filename = "") {
   if (category === "VIDEO") {
     return `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono-code uppercase tracking-wider bg-sky-500/15 text-sky-300 border border-sky-500/25">VIDEO</span>`;
+  }
+  if (category === "CODE" || isCodeFile(filename)) {
+    return `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono-code uppercase tracking-wider bg-emerald-500/15 text-emerald-300 border border-emerald-500/25">CODE</span>`;
   }
   if (category === "DOCUMENT") {
     return `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono-code uppercase tracking-wider bg-amber-500/15 text-amber-300 border border-amber-500/25">DOC</span>`;
@@ -383,4 +387,290 @@ export function mountSampleCinemaCanvas(canvasEl, timeLabelEl, scrubberEl, playB
   return () => {
     if (rafId) cancelAnimationFrame(rafId);
   };
+}
+
+// ============================================================================
+// CODE FILE PREVIEW & SYNTAX HELPERS
+// ============================================================================
+
+export const CODE_EXTENSIONS = new Set([
+  "html", "htm", "js", "jsx", "mjs", "cjs", "ts", "tsx", "py", "pyw",
+  "java", "c", "cpp", "cc", "cxx", "h", "hpp", "cs", "php", "rb", "go",
+  "rs", "swift", "kt", "kts", "scala", "sql", "sh", "bash", "zsh", "ps1",
+  "bat", "cmd", "css", "scss", "sass", "less", "json", "jsonc", "xml",
+  "yaml", "yml", "toml", "ini", "env", "md", "markdown", "txt", "log",
+  "dockerfile", "makefile", "vue", "svelte"
+]);
+
+export function isCodeFile(filename = "", mimeType = "") {
+  if (!filename && !mimeType) return false;
+  const name = String(filename || "");
+  const ext = name.includes(".") ? name.split(".").pop().toLowerCase() : "";
+  if (CODE_EXTENSIONS.has(ext)) return true;
+  const lowerName = name.toLowerCase();
+  if (lowerName === "dockerfile" || lowerName === "makefile" || lowerName.startsWith(".env")) return true;
+  const lowerMime = String(mimeType || "").toLowerCase();
+  if (lowerMime && (lowerMime.startsWith("text/") || lowerMime.includes("javascript") || lowerMime.includes("json") || lowerMime.includes("xml"))) return true;
+  return false;
+}
+
+export function isHtmlFile(filename = "") {
+  const name = String(filename || "");
+  const ext = name.includes(".") ? name.split(".").pop().toLowerCase() : "";
+  return ext === "html" || ext === "htm";
+}
+
+export function getCodeLanguage(filename = "") {
+  const name = String(filename || "");
+  const ext = name.includes(".") ? name.split(".").pop().toLowerCase() : "";
+  const map = {
+    html: "HTML", htm: "HTML",
+    js: "JavaScript", jsx: "React JSX", mjs: "JavaScript", cjs: "CommonJS",
+    ts: "TypeScript", tsx: "React TSX",
+    py: "Python", pyw: "Python",
+    java: "Java",
+    c: "C", cpp: "C++", cc: "C++", cxx: "C++", h: "C Header", hpp: "C++ Header",
+    cs: "C#", php: "PHP", rb: "Ruby", go: "Go", rs: "Rust",
+    swift: "Swift", kt: "Kotlin", scala: "Scala",
+    sql: "SQL", sh: "Shell", bash: "Bash", zsh: "Zsh", ps1: "PowerShell", bat: "Batch",
+    css: "CSS", scss: "SCSS", sass: "Sass", less: "Less",
+    json: "JSON", jsonc: "JSON", xml: "XML", yaml: "YAML", yml: "YAML",
+    toml: "TOML", ini: "INI", env: "ENV", md: "Markdown", txt: "Plain Text", log: "Log"
+  };
+  return map[ext] || (ext ? ext.toUpperCase() : "Code");
+}
+
+export function lookupMimeType(filename = "", fallback = "application/octet-stream") {
+  const name = String(filename || "");
+  const ext = name.includes(".") ? name.split(".").pop().toLowerCase() : "";
+  const map = {
+    html: "text/html; charset=utf-8",
+    htm: "text/html; charset=utf-8",
+    css: "text/css; charset=utf-8",
+    js: "application/javascript; charset=utf-8",
+    mjs: "application/javascript; charset=utf-8",
+    cjs: "application/javascript; charset=utf-8",
+    ts: "text/plain; charset=utf-8",
+    tsx: "text/plain; charset=utf-8",
+    jsx: "text/plain; charset=utf-8",
+    json: "application/json; charset=utf-8",
+    py: "text/plain; charset=utf-8",
+    java: "text/plain; charset=utf-8",
+    c: "text/plain; charset=utf-8",
+    cpp: "text/plain; charset=utf-8",
+    cs: "text/plain; charset=utf-8",
+    php: "text/plain; charset=utf-8",
+    rb: "text/plain; charset=utf-8",
+    go: "text/plain; charset=utf-8",
+    rs: "text/plain; charset=utf-8",
+    sql: "text/plain; charset=utf-8",
+    sh: "text/plain; charset=utf-8",
+    txt: "text/plain; charset=utf-8",
+    md: "text/plain; charset=utf-8",
+  };
+  return map[ext] || fallback;
+}
+
+export function escapeCodeHtml(str = "") {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+export function highlightCodeLine(rawCode = "", ext = "") {
+  const isPythonOrShell = ["py", "sh", "bash", "yml", "yaml", "rb"].includes(ext);
+
+  if (isPythonOrShell) {
+    const hashIdx = rawCode.indexOf("#");
+    if (hashIdx !== -1) {
+      const codePart = rawCode.slice(0, hashIdx);
+      const commentPart = rawCode.slice(hashIdx);
+      return highlightCodeTokens(codePart, ext) + `<span class="text-slate-500 italic">${escapeCodeHtml(commentPart)}</span>`;
+    }
+  } else {
+    const slashIdx = rawCode.indexOf("//");
+    if (slashIdx !== -1) {
+      const codePart = rawCode.slice(0, slashIdx);
+      const commentPart = rawCode.slice(slashIdx);
+      return highlightCodeTokens(codePart, ext) + `<span class="text-slate-500 italic">${escapeCodeHtml(commentPart)}</span>`;
+    }
+  }
+
+  return highlightCodeTokens(rawCode, ext);
+}
+
+function highlightCodeTokens(code = "", ext = "") {
+  let escaped = escapeCodeHtml(code);
+
+  // String literals
+  escaped = escaped.replace(/(["'`])((?:\\.|[^\\])*?)\1/g, '<span class="text-emerald-300">$1$2$1</span>');
+
+  // Keywords
+  const keywordsRegex = /\b(def|class|return|import|from|as|function|const|let|var|if|else|elif|for|while|try|catch|finally|throw|raise|async|await|yield|in|of|typeof|instanceof|new|this|self|public|private|protected|static|void|int|float|double|char|string|bool|boolean|struct|interface|type|enum|package|namespace|using|extends|implements|export|default|null|true|false|None|True|False|SELECT|FROM|WHERE|INSERT|UPDATE|DELETE|JOIN|AND|OR|NOT)\b/g;
+  escaped = escaped.replace(keywordsRegex, '<span class="text-pink-400 font-semibold">$1</span>');
+
+  // Numbers
+  escaped = escaped.replace(/\b(\d+(?:\.\d+)?)\b/g, '<span class="text-amber-300">$1</span>');
+
+  // Function calls
+  escaped = escaped.replace(/\b([a-zA-Z_$][a-zA-Z0-9_$]*)(?=\s*\()/g, '<span class="text-sky-300">$1</span>');
+
+  return escaped;
+}
+
+export function renderCodeCardThumbnail(file) {
+  const lang = getCodeLanguage(file.name);
+  return `
+    <div class="w-full h-full flex flex-col items-center justify-center p-4 bg-gradient-to-b from-[#090d16] to-[#04060b] border border-white/[0.04] group-hover:border-emerald-500/20 transition relative">
+      <div class="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-center text-emerald-400 mb-2 shadow-inner group-hover:scale-105 transition">
+        <i data-lucide="code-2" class="w-6 h-6"></i>
+      </div>
+      <div class="text-[11px] font-mono-code text-emerald-300 font-semibold tracking-wider">${escapeCodeHtml(lang)}</div>
+      <span class="text-[10px] font-mono-code text-slate-400 mt-0.5 truncate max-w-[140px]">${escapeCodeHtml(file.metaLabel || "Source Code")}</span>
+    </div>
+  `;
+}
+
+export function renderCodeViewerContainer(file) {
+  const lang = getCodeLanguage(file.name);
+  return `
+    <div class="w-full h-[50vh] lg:h-full rounded-xl border border-white/10 bg-[#080b11] flex flex-col overflow-hidden shadow-2xl">
+      <!-- Code Stage Header -->
+      <div class="px-3.5 sm:px-4 py-2.5 bg-black/60 border-b border-white/[0.08] flex items-center justify-between shrink-0">
+        <div class="flex items-center gap-2 min-w-0">
+          <div class="flex items-center gap-1.5 shrink-0">
+            <span class="w-2.5 h-2.5 rounded-full bg-red-500/80 inline-block"></span>
+            <span class="w-2.5 h-2.5 rounded-full bg-amber-500/80 inline-block"></span>
+            <span class="w-2.5 h-2.5 rounded-full bg-emerald-500/80 inline-block"></span>
+          </div>
+          <span class="ml-1.5 px-2 py-0.5 rounded text-[10px] font-mono-code font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-300 border border-emerald-500/25 shrink-0">${escapeCodeHtml(lang)}</span>
+          <span class="text-xs font-mono-code text-slate-300 truncate">${escapeCodeHtml(file.name)}</span>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+          <span id="code-viewer-stats" class="text-[10px] sm:text-[11px] font-mono-code text-slate-400">Loading code…</span>
+          <button id="btn-copy-code" type="button" class="glass-button px-2 sm:px-2.5 py-1 rounded text-[10px] sm:text-[11px] font-mono-code text-slate-200 hover:text-white inline-flex items-center gap-1">
+            <i data-lucide="copy" class="w-3 h-3"></i>
+            <span>Copy</span>
+          </button>
+        </div>
+      </div>
+      <!-- Code Lines Body -->
+      <div id="code-viewer-body" class="flex-1 overflow-auto bg-[#07090e] p-2 sm:p-3 text-slate-200">
+        <div class="flex items-center justify-center h-full text-slate-400 text-xs font-mono-code gap-2">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+          <span>Loading code preview…</span>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+export async function fetchAndRenderCodePreview(file, containerEl, statsEl, copyBtnEl) {
+  if (!containerEl) return;
+  const ext = (file.name.split(".").pop() || "").toLowerCase();
+
+  let text = file._cachedText || null;
+
+  if (!text) {
+    // 1. Try vault IndexedDB
+    try {
+      if (typeof getMediaFromVault === "function") {
+        const rec = await getMediaFromVault(file.id, file.name);
+        if (rec?.blob instanceof Blob) {
+          text = await rec.blob.text();
+        } else if (rec?.dataUrl) {
+          text = decodeDataUrl(rec.dataUrl);
+        }
+      }
+    } catch (e) {}
+
+    // 2. Try fetching URL
+    if (!text && file.url) {
+      if (file.url.startsWith("data:")) {
+        text = decodeDataUrl(file.url);
+      } else {
+        try {
+          const res = await fetch(file.url);
+          if (res.ok) {
+            text = await res.text();
+          }
+        } catch (e) {}
+      }
+    }
+  }
+
+  if (text == null) {
+    containerEl.innerHTML = `
+      <div class="flex flex-col items-center justify-center h-full p-8 text-center space-y-3">
+        <i data-lucide="file-code" class="w-10 h-10 text-slate-500"></i>
+        <div class="text-xs text-slate-400 font-mono-code">Code content cannot be read directly. Download the file to view.</div>
+        <a href="${escapeCodeHtml(file.url)}" download="${escapeCodeHtml(file.name)}" class="btn-studio-primary px-4 py-1.5 rounded-lg text-xs font-mono-code">Download ${escapeCodeHtml(file.name)}</a>
+      </div>
+    `;
+    if (window.lucide) window.lucide.createIcons();
+    return;
+  }
+
+  file._cachedText = text;
+
+  const lines = text.split(/\r?\n/);
+  if (statsEl) {
+    statsEl.textContent = `${lines.length} lines • ${formatBytes(new Blob([text]).size)}`;
+  }
+
+  if (copyBtnEl) {
+    copyBtnEl.onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(text);
+        const span = copyBtnEl.querySelector("span");
+        if (span) span.textContent = "Copied!";
+        setTimeout(() => {
+          if (span) span.textContent = "Copy";
+        }, 2000);
+      } catch (err) {}
+    };
+  }
+
+  // Render line numbers and code
+  const lineNumbersHtml = lines
+    .map((_, i) => `<div class="leading-6">${i + 1}</div>`)
+    .join("");
+
+  const codeLinesHtml = lines
+    .map((line) => `<div class="leading-6">${highlightCodeLine(line, ext) || "&nbsp;"}</div>`)
+    .join("");
+
+  containerEl.innerHTML = `
+    <div class="w-full flex min-w-full font-mono-code text-[11px] sm:text-xs leading-6">
+      <div class="select-none py-1 px-3 sm:px-4 text-right text-slate-600 border-r border-white/10 shrink-0 font-mono-code bg-black/20">
+        ${lineNumbersHtml}
+      </div>
+      <div class="py-1 px-3 sm:px-4 flex-1 overflow-x-auto text-slate-200 select-text whitespace-pre font-mono-code">
+        ${codeLinesHtml}
+      </div>
+    </div>
+  `;
+
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function decodeDataUrl(dataUrl = "") {
+  try {
+    const commaIdx = dataUrl.indexOf(",");
+    if (commaIdx === -1) return null;
+    const meta = dataUrl.slice(0, commaIdx);
+    const data = dataUrl.slice(commaIdx + 1);
+    if (meta.includes(";base64")) {
+      return decodeURIComponent(escape(atob(data)));
+    }
+    return decodeURIComponent(data);
+  } catch (e) {
+    try {
+      const commaIdx = dataUrl.indexOf(",");
+      return atob(dataUrl.slice(commaIdx + 1));
+    } catch {
+      return null;
+    }
+  }
 }

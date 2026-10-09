@@ -28,8 +28,9 @@ import {
   renderCodeCardThumbnail,
   renderCodeViewerContainer,
   fetchAndRenderCodePreview,
-} from "./ui-helpers.js?v=16";
-import { createClientPortalController } from "./client-portal.js?v=16";
+  getHtmlFileBlobUrl,
+} from "./ui-helpers.js?v=17";
+import { createClientPortalController } from "./client-portal.js?v=17";
 
 const rootEl = document.getElementById("app-root");
 const globalFileInput = document.getElementById("global-file-input");
@@ -2364,7 +2365,7 @@ function renderStudioPreviewModal(file) {
                 : isHtmlFile(file.name)
                 ? `
                   <div class="w-full h-full flex flex-col space-y-2.5">
-                    <div class="flex items-center justify-between px-1 shrink-0">
+                    <div class="flex items-center justify-between px-1 shrink-0 flex-wrap gap-2">
                       <div class="inline-flex rounded-lg bg-black/50 border border-white/10 p-0.5 text-xs font-mono-code">
                         <button id="btn-html-view-render" type="button" class="px-2.5 py-1 rounded-md transition ${state.codePreviewMode === 'code' ? 'text-slate-400 hover:text-white' : 'bg-white/15 text-white font-medium border border-white/10'}">
                           <span class="inline-flex items-center gap-1.5"><i data-lucide="eye" class="w-3.5 h-3.5 text-amber-400"></i> Rendered View</span>
@@ -2373,13 +2374,26 @@ function renderStudioPreviewModal(file) {
                           <span class="inline-flex items-center gap-1.5"><i data-lucide="code-2" class="w-3.5 h-3.5 text-emerald-400"></i> Source Code</span>
                         </button>
                       </div>
-                      <span class="text-[11px] font-mono-code text-slate-400">HTML Deliverable</span>
+                      <div class="flex items-center gap-2">
+                        <a
+                          id="app-btn-open-html-tab"
+                          href="${escapeHtml(file._livePreviewBlobUrl || file.url || '#')}"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          class="px-2.5 py-1 rounded-lg text-xs font-mono-code glass-button text-sky-300 hover:text-white inline-flex items-center gap-1.5"
+                          title="Open live webpage in new tab"
+                        >
+                          <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
+                          <span>Open in New Tab</span>
+                        </a>
+                        <span class="text-[11px] font-mono-code text-slate-400 hidden sm:inline">HTML Deliverable</span>
+                      </div>
                     </div>
-                    <div class="flex-1 min-h-0">
+                    <div class="flex-1 min-h-0 relative w-full h-[50vh] lg:h-full rounded-xl overflow-hidden border border-white/10 bg-white shadow-2xl">
                       ${
                         state.codePreviewMode === "code"
                           ? renderCodeViewerContainer(file)
-                          : `<iframe src="${escapeHtml(file.url || "")}" class="w-full h-[50vh] lg:h-full rounded-xl border border-white/10 bg-white"></iframe>`
+                          : `<iframe id="app-html-preview-iframe" src="${escapeHtml(file._livePreviewBlobUrl || file.url || "")}" class="w-full h-full border-0 bg-white" title="${escapeHtml(file.name)}"></iframe>`
                       }
                     </div>
                   </div>
@@ -2878,6 +2892,21 @@ function bindDashboardEvents() {
           fetchAndRenderCodePreview(state.previewFile, bodyEl, statsEl, copyBtn);
         }
       }
+    }
+
+    if (isHtmlFile(state.previewFile.name)) {
+      const iframeEl = document.getElementById("app-html-preview-iframe");
+      const openTabLink = document.getElementById("app-btn-open-html-tab");
+      getHtmlFileBlobUrl(state.previewFile).then((liveUrl) => {
+        if (liveUrl) {
+          if (iframeEl && state.codePreviewMode === "render") {
+            iframeEl.src = liveUrl;
+          }
+          if (openTabLink) {
+            openTabLink.href = liveUrl;
+          }
+        }
+      });
     }
 
     document.getElementById("btn-html-view-render")?.addEventListener("click", () => {

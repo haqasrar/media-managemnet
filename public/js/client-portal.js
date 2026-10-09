@@ -16,7 +16,7 @@ import {
   fetchAndRenderCodePreview,
   decodeDataUrl,
   getHtmlFileBlobUrl,
-} from "./ui-helpers.js?v=16";
+} from "./ui-helpers.js?v=17";
 import { hydrateMediaFilesFromVault } from "./firebase-client.js?v=15";
 
 export function createClientPortalController({ rootEl, token, showToast }) {

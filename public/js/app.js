@@ -8,9 +8,11 @@ import {
   signInWithFirebaseGoogle,
   signOutGoogleUser,
   uploadMediaFile,
+  cancelFileUpload,
+  cancelAllActiveUploads,
   hydrateMediaFilesFromVault,
   isLiveSessionBlobUrl,
-} from "./firebase-client.js?v=12";
+} from "./firebase-client.js?v=13";
 import {
   formatBytes,
   formatDateShort,
@@ -1695,9 +1697,30 @@ function renderActiveUploadQueueHTML() {
             }
           </span>
         </div>
-        <span class="text-xs font-mono-code font-semibold ${
-          allDone ? "text-emerald-300" : "text-amber-300"
-        }">${totalPct}%</span>
+        <div class="flex items-center gap-2.5">
+          <span class="text-xs font-mono-code font-semibold ${
+            allDone ? "text-emerald-300" : "text-amber-300"
+          }">${totalPct}%</span>
+          ${
+            !allDone
+              ? `
+              <button
+                type="button"
+                id="btn-cancel-all-uploads"
+                data-action="cancel-all-uploads"
+                class="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-red-500/15 hover:bg-red-500/25 active:bg-red-500/35 text-red-300 border border-red-500/30 hover:border-red-500/50 transition-all cursor-pointer shadow-sm active:scale-95"
+                title="Cancel all pending and in-progress uploads"
+              >
+                <svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+                <span>Cancel Upload</span>
+              </button>
+              `
+              : ""
+          }
+        </div>
       </div>
 
       <!-- Overall Batch Upload Progress Line -->
@@ -1730,9 +1753,28 @@ function renderActiveUploadQueueHTML() {
                   <span class="font-medium text-white truncate" title="${escapeHtml(
                     f.name
                   )}">${escapeHtml(f.name)}</span>
-                  <span class="font-mono-code shrink-0 ${
-                    done ? "text-emerald-300" : "text-amber-300"
-                  }">${done ? "100% ✓" : `${pct}%`}</span>
+                  <div class="flex items-center gap-1.5 shrink-0">
+                    <span class="font-mono-code ${
+                      done ? "text-emerald-300" : "text-amber-300"
+                    }">${done ? "100% ✓" : `${pct}%`}</span>
+                    ${
+                      !done
+                        ? `
+                        <button
+                          type="button"
+                          data-cancel-file-id="${escapeHtml(f.id)}"
+                          class="p-0.5 rounded text-slate-400 hover:text-red-300 hover:bg-red-500/20 transition cursor-pointer"
+                          title="Cancel upload for ${escapeHtml(f.name)}"
+                        >
+                          <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                          </svg>
+                        </button>
+                        `
+                        : ""
+                    }
+                  </div>
                 </div>
                 <div class="w-full h-1.5 rounded-full bg-slate-950 overflow-hidden">
                   <div
@@ -3428,6 +3470,64 @@ function getCurrentUserUsedBytes() {
     .reduce((acc, f) => acc + (Number(f.sizeBytes) || 0), 0);
 }
 
+// Upload Batch Cancellation Management
+let isUploadBatchCancelled = false;
+
+function cancelAllCurrentUploads() {
+  isUploadBatchCancelled = true;
+  cancelAllActiveUploads();
+
+  if (globalFileInput) globalFileInput.value = "";
+  if (globalFolderInput) globalFolderInput.value = "";
+
+  const unfinishedFiles = state.files.filter(
+    (f) => f.uploadStatus === "uploading" || f.uploadStatus === "cancelled"
+  );
+  const stoppedCount = unfinishedFiles.length;
+
+  // Purge unfinished uploads from workspace state so incomplete files don't pollute the library
+  state.files = state.files.filter(
+    (f) => f.uploadStatus !== "uploading" && f.uploadStatus !== "cancelled"
+  );
+
+  unfinishedFiles.forEach((f) => {
+    if (f.url && f.url.startsWith("blob:")) {
+      try {
+        URL.revokeObjectURL(f.url);
+      } catch {}
+    }
+  });
+
+  saveWorkspaceCache();
+  renderDashboard();
+
+  showToast(
+    stoppedCount > 0
+      ? `Upload cancelled. Stopped ${stoppedCount} item${stoppedCount === 1 ? "" : "s"}.`
+      : "Upload cancelled.",
+    "info"
+  );
+}
+
+function cancelSingleFileUpload(fileId) {
+  if (!fileId) return;
+  cancelFileUpload(fileId);
+
+  const fileIdx = state.files.findIndex((f) => f.id === fileId);
+  if (fileIdx >= 0) {
+    const file = state.files[fileIdx];
+    if (file.url && file.url.startsWith("blob:")) {
+      try {
+        URL.revokeObjectURL(file.url);
+      } catch {}
+    }
+    state.files.splice(fileIdx, 1);
+    saveWorkspaceCache();
+    renderDashboard();
+    showToast(`Cancelled upload for "${file.name}"`, "info");
+  }
+}
+
 async function handleFilesBatchUpload(fileList) {
   if (!fileList || fileList.length === 0) return;
 
@@ -3441,9 +3541,12 @@ async function handleFilesBatchUpload(fileList) {
     return;
   }
 
+  isUploadBatchCancelled = false;
   const ownerId = getPrimaryUserOwnerId();
   const addedFiles = [];
   for (let i = 0; i < fileList.length; i++) {
+    if (isUploadBatchCancelled) break;
+
     const file = fileList[i];
     const existingIdx = state.files.findIndex(
       (f) =>
@@ -3466,6 +3569,8 @@ async function handleFilesBatchUpload(fileList) {
       },
     });
 
+    if (isUploadBatchCancelled) break;
+
     if (existingFile) {
       instantItem.approvalStatus = existingFile.approvalStatus || "PENDING";
       instantItem.isStarred = Boolean(existingFile.isStarred);
@@ -3474,6 +3579,10 @@ async function handleFilesBatchUpload(fileList) {
       state.files.unshift(instantItem);
     }
     addedFiles.push(instantItem);
+  }
+
+  if (isUploadBatchCancelled) {
+    return;
   }
 
   saveWorkspaceCache();
@@ -3502,6 +3611,7 @@ async function handleFolderBatchUpload(fileList) {
     return;
   }
 
+  isUploadBatchCancelled = false;
   const ownerId = getPrimaryUserOwnerId();
   const now = new Date().toISOString();
   const folderPathMap = new Map(); // relativeFolderPath -> folderId
@@ -3553,6 +3663,8 @@ async function handleFolderBatchUpload(fileList) {
   };
 
   for (let i = 0; i < fileList.length; i++) {
+    if (isUploadBatchCancelled) break;
+
     const file = fileList[i];
     const relPath = file.webkitRelativePath || file.name;
     const parts = relPath.split("/").filter(Boolean);
@@ -3583,6 +3695,8 @@ async function handleFolderBatchUpload(fileList) {
       },
     });
 
+    if (isUploadBatchCancelled) break;
+
     if (existingFile) {
       instantItem.approvalStatus = existingFile.approvalStatus || "PENDING";
       instantItem.isStarred = Boolean(existingFile.isStarred);
@@ -3590,6 +3704,10 @@ async function handleFolderBatchUpload(fileList) {
     } else {
       state.files.unshift(instantItem);
     }
+  }
+
+  if (isUploadBatchCancelled) {
+    return;
   }
 
   saveWorkspaceCache();
@@ -3604,6 +3722,26 @@ async function handleFolderBatchUpload(fileList) {
     "success"
   );
 }
+
+// Global event delegation for Upload Cancellation (handles dynamic DOM updates safely)
+document.addEventListener("click", (e) => {
+  const cancelAllBtn = e.target.closest("#btn-cancel-all-uploads, [data-action='cancel-all-uploads']");
+  if (cancelAllBtn) {
+    e.preventDefault();
+    e.stopPropagation();
+    cancelAllCurrentUploads();
+    return;
+  }
+
+  const cancelFileBtn = e.target.closest("[data-cancel-file-id]");
+  if (cancelFileBtn) {
+    e.preventDefault();
+    e.stopPropagation();
+    const fileId = cancelFileBtn.getAttribute("data-cancel-file-id");
+    cancelSingleFileUpload(fileId);
+    return;
+  }
+});
 
 globalFileInput?.addEventListener("change", async (e) => {
   const files = Array.from(e.target.files || []);

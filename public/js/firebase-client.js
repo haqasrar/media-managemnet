@@ -533,6 +533,31 @@ function createSyncSafeDataUrl(file, category) {
   });
 }
 
+// Active in-flight uploads registry for cancellation
+const activeUploadTasks = new Map(); // fileId -> { abort: Function }
+
+export function cancelFileUpload(fileId) {
+  if (!fileId) return false;
+  const task = activeUploadTasks.get(fileId);
+  if (task) {
+    try {
+      task.abort();
+    } catch {}
+    activeUploadTasks.delete(fileId);
+    return true;
+  }
+  return false;
+}
+
+export function cancelAllActiveUploads() {
+  for (const [id, task] of activeUploadTasks.entries()) {
+    try {
+      task.abort();
+    } catch {}
+  }
+  activeUploadTasks.clear();
+}
+
 /**
  * Instant, non-blocking media file upload with live per-file progress tracking
  * and persistent IndexedDB + cloud-safe Data URL storage so media never breaks on refresh.
@@ -568,7 +593,7 @@ export async function uploadMediaFile(
     sizeBytes: totalBytes,
     uploadedBytes: 0,
     uploadProgress: 4,
-    uploadStatus: "uploading", // "uploading" | "complete" | "done"
+    uploadStatus: "uploading", // "uploading" | "complete" | "done" | "cancelled"
     url: instantBlobUrl,
     posterUrl: null,
     storagePath: `uploads/${file.name}`,
@@ -586,8 +611,11 @@ export async function uploadMediaFile(
   let currentPct = 4;
   let networkDone = false;
   let finalized = false;
+  let isAborted = false;
+  let activeXhr = null;
 
   const emitProgress = (pct) => {
+    if (isAborted) return;
     const clamped = Math.max(currentPct, Math.min(100, Math.round(pct)));
     currentPct = clamped;
     instantFile.uploadProgress = clamped;
@@ -597,6 +625,10 @@ export async function uploadMediaFile(
 
   // Smooth visual progress ticker so every file visibly animates its progress line
   const smoothTimer = setInterval(() => {
+    if (isAborted) {
+      clearInterval(smoothTimer);
+      return;
+    }
     if (finalized) {
       clearInterval(smoothTimer);
       return;
@@ -614,20 +646,44 @@ export async function uploadMediaFile(
       instantFile.uploadProgress = 100;
       instantFile.uploadedBytes = totalBytes;
       instantFile.uploadStatus = "complete";
+      activeUploadTasks.delete(fileId);
       if (onProgress) onProgress(instantFile);
       if (onSynced) onSynced(instantFile);
 
       setTimeout(() => {
-        instantFile.uploadStatus = "done";
-        if (onProgress) onProgress(instantFile);
+        if (!isAborted) {
+          instantFile.uploadStatus = "done";
+          if (onProgress) onProgress(instantFile);
+        }
       }, 1800);
     }
   }, 65);
 
+  const abortTask = () => {
+    isAborted = true;
+    finalized = true;
+    clearInterval(smoothTimer);
+    if (activeXhr) {
+      try {
+        activeXhr.abort();
+      } catch {}
+    }
+    instantFile.uploadStatus = "cancelled";
+    activeSessionBlobUrls.delete(instantBlobUrl);
+    try {
+      URL.revokeObjectURL(instantBlobUrl);
+    } catch {}
+    activeUploadTasks.delete(fileId);
+  };
+
+  activeUploadTasks.set(fileId, { abort: abortTask });
+
   // Generate sync-safe Data URL & persist in IndexedDB + sync to backend via JSON (prevents binary UTF-8 corruption on Netlify)
   (async () => {
     try {
+      if (isAborted) return;
       const { dataUrl, posterUrl } = await createSyncSafeDataUrl(file, category);
+      if (isAborted) return;
       if (posterUrl) {
         instantFile.posterUrl = posterUrl;
       }
@@ -641,10 +697,12 @@ export async function uploadMediaFile(
         dataUrl: dataUrl || null,
         posterUrl: posterUrl || null,
       });
+      if (isAborted) return;
       if (onSynced) onSynced(instantFile);
 
       // Upload JSON payload to /api/upload with XHR upload progress
       const xhr = new XMLHttpRequest();
+      activeXhr = xhr;
       xhr.open("POST", "/api/upload", true);
       xhr.setRequestHeader("Content-Type", "application/json");
       xhr.setRequestHeader("x-file-id", fileId);
@@ -654,6 +712,7 @@ export async function uploadMediaFile(
       xhr.setRequestHeader("x-owner-id", ownerId || "default");
 
       xhr.upload.onprogress = (evt) => {
+        if (isAborted) return;
         if (evt.lengthComputable && evt.total > 0) {
           const rawPct = Math.round((evt.loaded / evt.total) * 94);
           if (rawPct > currentPct) {
@@ -663,6 +722,7 @@ export async function uploadMediaFile(
       };
 
       xhr.onload = () => {
+        if (isAborted) return;
         if (xhr.status >= 200 && xhr.status < 300) {
           try {
             const parsed = JSON.parse(xhr.responseText);

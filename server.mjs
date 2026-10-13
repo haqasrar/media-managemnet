@@ -771,6 +771,45 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (pathname === "/api/files/batch-delete" && method === "POST") {
+      const body = await readJsonBody(req);
+      const ids = Array.isArray(body?.ids) ? body.ids : [];
+      const permanent = Boolean(body?.permanent);
+      const db = readDb();
+      const idSet = new Set(ids);
+
+      if (permanent) {
+        db.files = db.files.filter((f) => {
+          if (idSet.has(f.id)) {
+            if (f.storageProvider === "local" && f.url && f.url.startsWith("/uploads/")) {
+              const diskPath = path.join(PUBLIC_DIR, f.url);
+              if (fs.existsSync(diskPath)) {
+                try {
+                  fs.unlinkSync(diskPath);
+                } catch {
+                  // ignore unlink error
+                }
+              }
+            }
+            return false;
+          }
+          return true;
+        });
+      } else {
+        const now = new Date().toISOString();
+        db.files.forEach((f) => {
+          if (idSet.has(f.id)) {
+            f.isTrashed = true;
+            f.updatedAt = now;
+          }
+        });
+      }
+
+      writeDb(db);
+      sendJson(res, 200, { success: true, count: ids.length, permanent });
+      return;
+    }
+
     if (pathname.startsWith("/api/files/") && (method === "PATCH" || method === "DELETE")) {
       const fileId = pathname.replace("/api/files/", "");
       const db = readDb();

@@ -306,6 +306,7 @@ const state = {
   currentFolderId: null,
   searchQuery: "",
   viewMode: "grid", // grid | table
+  selectedFileIds: new Set(),
 
   // Upload Queue (disabled blocking loader; instant updates)
   uploadStatus: null,
@@ -1415,6 +1416,48 @@ function renderDashboard() {
     ${state.previewFile ? renderStudioPreviewModal(state.previewFile) : ""}
     ${state.showFirebaseModal ? renderFirebaseConfigModal() : ""}
     ${state.showUpgradePlanModal ? renderStorageUpgradeModal() : ""}
+
+    ${
+      state.selectedFileIds && state.selectedFileIds.size > 0
+        ? `
+      <div class="fixed bottom-6 inset-x-0 z-40 flex justify-center pointer-events-none px-4">
+        <div class="pointer-events-auto glass-panel px-5 py-3 rounded-2xl border border-amber-500/40 shadow-2xl flex items-center gap-3.5 bg-slate-950/95 backdrop-blur-xl">
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse"></span>
+            <span class="text-xs font-semibold text-white">
+              ${state.selectedFileIds.size} deliverable${
+                state.selectedFileIds.size === 1 ? "" : "s"
+              } selected
+            </span>
+          </div>
+          <div class="h-4 w-px bg-white/20"></div>
+          <button
+            type="button"
+            id="btn-floating-delete-selected"
+            class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-rose-500/20 hover:bg-rose-500/35 text-rose-200 border border-rose-500/50 transition cursor-pointer shadow-sm active:scale-95"
+          >
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+            <span>${
+              state.activeNav === "TRASH"
+                ? `Permanently Delete (${state.selectedFileIds.size})`
+                : `Delete Selected (${state.selectedFileIds.size})`
+            }</span>
+          </button>
+          <button
+            type="button"
+            id="btn-floating-clear-selected"
+            class="px-2.5 py-1.5 rounded-xl text-xs text-slate-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
+          >
+            Deselect All
+          </button>
+        </div>
+      </div>
+      `
+        : ""
+    }
   `;
 
   if (window.lucide) window.lucide.createIcons();
@@ -1441,6 +1484,11 @@ function renderMediaExplorerSection(visibleFolders, visibleFiles) {
           (s.folderId === currentFolder.id || s.resourceName === currentFolder.name)
       )
     : null;
+
+  const selectedCount = state.selectedFileIds ? state.selectedFileIds.size : 0;
+  const allVisibleSelected =
+    visibleFiles.length > 0 &&
+    visibleFiles.every((f) => state.selectedFileIds?.has(f.id));
 
   return `
     ${
@@ -1633,11 +1681,60 @@ function renderMediaExplorerSection(visibleFolders, visibleFiles) {
 
     <!-- MEDIA FILES SECTION -->
     <section>
-      <div class="flex items-center justify-between mb-3.5">
-        <h2 class="text-xs font-mono-code uppercase tracking-wider text-slate-400">
-          Media Deliverables (${visibleFiles.length})
-        </h2>
-        <span class="text-[11px] text-slate-500">Images • Videos • Documents</span>
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-3.5">
+        <div class="flex items-center gap-3">
+          <h2 class="text-xs font-mono-code uppercase tracking-wider text-slate-400">
+            Media Deliverables (${visibleFiles.length})
+          </h2>
+          ${
+            visibleFiles.length > 0
+              ? `
+            <label class="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white cursor-pointer select-none px-2 py-1 rounded-lg hover:bg-white/[0.04] transition">
+              <input
+                type="checkbox"
+                id="select-all-files-checkbox"
+                ${allVisibleSelected ? "checked" : ""}
+                class="w-3.5 h-3.5 rounded border-white/20 bg-slate-900/80 text-amber-500 focus:ring-0 cursor-pointer accent-amber-500"
+              />
+              <span>Select All</span>
+            </label>
+            `
+              : ""
+          }
+        </div>
+
+        <div class="flex items-center gap-2">
+          ${
+            selectedCount > 0
+              ? `
+            <div class="flex items-center gap-2 bg-slate-900/90 border border-amber-500/30 px-3 py-1.5 rounded-xl shadow-lg">
+              <span class="text-xs font-medium text-amber-300">
+                ${selectedCount} selected
+              </span>
+              <button
+                type="button"
+                id="btn-delete-selected-files"
+                class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-rose-500/20 hover:bg-rose-500/35 text-rose-200 border border-rose-500/40 transition cursor-pointer active:scale-95 shadow-sm"
+                title="${state.activeNav === "TRASH" ? "Delete permanently" : "Move to Trash"}"
+              >
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                </svg>
+                <span>${state.activeNav === "TRASH" ? "Delete Permanently" : "Delete Selected"}</span>
+              </button>
+              <button
+                type="button"
+                id="btn-clear-selected-files"
+                class="px-2 py-1 rounded-lg text-xs text-slate-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+            `
+              : `<span class="text-[11px] text-slate-500">Images • Videos • Documents</span>`
+          }
+        </div>
       </div>
 
       ${
@@ -1804,6 +1901,7 @@ function renderFilesGridView(files) {
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
       ${files
         .map((file) => {
+          const isSelected = Boolean(state.selectedFileIds && state.selectedFileIds.has(file.id));
           const fbCount = state.feedback.filter((fb) => fb.fileId === file.id).length;
           const isUploading =
             file.uploadStatus === "uploading" || file.uploadStatus === "complete";
@@ -1817,7 +1915,9 @@ function renderFilesGridView(files) {
               : Math.round((pct / 100) * (file.sizeBytes || 0));
 
           return `
-            <div class="glass-card rounded-2xl overflow-hidden flex flex-col justify-between group">
+            <div class="glass-card rounded-2xl overflow-hidden flex flex-col justify-between group transition-all duration-150 ${
+              isSelected ? "ring-2 ring-amber-400 border-amber-400/60 bg-amber-500/[0.06]" : ""
+            }">
               <!-- Media Preview Header -->
               <div
                 data-preview-file="${escapeHtml(file.id)}"
@@ -1855,7 +1955,17 @@ function renderFilesGridView(files) {
                       </div>`
                 }
 
-                <div class="absolute top-2.5 left-2.5 flex items-center gap-1.5">
+                <div class="absolute top-2.5 left-2.5 flex items-center gap-1.5 z-20">
+                  <label class="flex items-center cursor-pointer p-1 rounded-lg bg-slate-950/75 backdrop-blur-md border ${
+                    isSelected ? "border-amber-400 bg-amber-500/20" : "border-white/20 hover:border-amber-400/70"
+                  } transition" onclick="event.stopPropagation()">
+                    <input
+                      type="checkbox"
+                      data-select-file="${escapeHtml(file.id)}"
+                      ${isSelected ? "checked" : ""}
+                      class="w-4 h-4 rounded border-white/20 bg-slate-900 text-amber-500 focus:ring-0 cursor-pointer accent-amber-500"
+                    />
+                  </label>
                   ${renderCategoryBadge(file.category)}
                 </div>
                 <div class="absolute top-2.5 right-2.5">
@@ -2004,12 +2114,24 @@ function renderFilesGridView(files) {
 }
 
 function renderFilesTableView(files) {
+  const allVisibleSelected =
+    files.length > 0 && files.every((f) => state.selectedFileIds?.has(f.id));
+
   return `
     <div class="glass-panel rounded-2xl overflow-hidden">
       <div class="overflow-x-auto w-full">
         <table class="w-full text-left border-collapse">
           <thead>
             <tr class="border-b border-white/[0.08] text-[11px] font-mono-code uppercase text-slate-400">
+              <th class="py-3 px-3 sm:px-4 w-10">
+                <input
+                  type="checkbox"
+                  id="select-all-files-table"
+                  ${allVisibleSelected ? "checked" : ""}
+                  class="w-3.5 h-3.5 rounded border-white/20 bg-slate-900/80 accent-amber-500 cursor-pointer"
+                  title="Select all deliverables"
+                />
+              </th>
               <th class="py-3 px-3 sm:px-4">Deliverable Name</th>
               <th class="py-3 px-4 hidden sm:table-cell">Category</th>
               <th class="py-3 px-4 hidden md:table-cell">Client Status</th>
@@ -2020,6 +2142,7 @@ function renderFilesTableView(files) {
           <tbody class="divide-y divide-white/[0.06] text-xs">
             ${files
               .map((file) => {
+                const isSelected = Boolean(state.selectedFileIds && state.selectedFileIds.has(file.id));
                 const isUploading =
                   file.uploadStatus === "uploading" || file.uploadStatus === "complete";
                 const pct = isUploading
@@ -2028,7 +2151,15 @@ function renderFilesTableView(files) {
                 const isComplete = pct >= 100 || file.uploadStatus === "complete";
 
                 return `
-              <tr class="hover:bg-white/[0.03] transition">
+              <tr class="hover:bg-white/[0.03] transition ${isSelected ? "bg-amber-500/[0.07]" : ""}">
+                <td class="py-3 px-3 sm:px-4 w-10" onclick="event.stopPropagation()">
+                  <input
+                    type="checkbox"
+                    data-select-file="${escapeHtml(file.id)}"
+                    ${isSelected ? "checked" : ""}
+                    class="w-4 h-4 rounded border-white/20 bg-slate-900 accent-amber-500 cursor-pointer"
+                  />
+                </td>
                 <td class="py-3 px-3 sm:px-4 max-w-[160px] sm:max-w-xs">
                   <div
                     data-preview-file="${escapeHtml(file.id)}"
@@ -2821,6 +2952,79 @@ function bindStorageUpgradeModalEvents(rerenderFn) {
   });
 }
 
+async function deleteSelectedFiles() {
+  if (!state.selectedFileIds || state.selectedFileIds.size === 0) return;
+  const selectedCount = state.selectedFileIds.size;
+  const isTrashView = state.activeNav === "TRASH";
+
+  const confirmMsg = isTrashView
+    ? `Permanently delete ${selectedCount} selected deliverable${selectedCount === 1 ? "" : "s"}? This action cannot be undone.`
+    : `Move ${selectedCount} selected deliverable${selectedCount === 1 ? "" : "s"} to Trash?`;
+
+  if (!window.confirm(confirmMsg)) {
+    return;
+  }
+
+  const idsToDelete = Array.from(state.selectedFileIds);
+  const idSet = new Set(idsToDelete);
+
+  if (isTrashView) {
+    // Permanent deletion
+    state.files = state.files.filter((f) => !idSet.has(f.id));
+    idsToDelete.forEach((id) => {
+      const f = state.files.find((item) => item.id === id);
+      if (f && f.url && f.url.startsWith("blob:")) {
+        try {
+          URL.revokeObjectURL(f.url);
+        } catch {}
+      }
+    });
+    showToast(
+      `Permanently deleted ${selectedCount} deliverable${selectedCount === 1 ? "" : "s"}`,
+      "info"
+    );
+  } else {
+    // Move to Trash
+    const now = new Date().toISOString();
+    state.files.forEach((f) => {
+      if (idSet.has(f.id)) {
+        f.isTrashed = true;
+        f.updatedAt = now;
+      }
+    });
+    showToast(
+      `Moved ${selectedCount} deliverable${selectedCount === 1 ? "" : "s"} to Trash`,
+      "info"
+    );
+  }
+
+  state.selectedFileIds.clear();
+  saveWorkspaceCache();
+  renderDashboard();
+
+  // Background server sync via batch endpoint
+  fetch("/api/files/batch-delete", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids: idsToDelete, permanent: isTrashView }),
+  }).catch(() => {
+    // Fallback: individual requests
+    if (isTrashView) {
+      idsToDelete.forEach((id) => {
+        fetch(`/api/files/${id}`, { method: "DELETE" }).catch(() => {});
+      });
+    } else {
+      idsToDelete.forEach((id) => {
+        fetch(`/api/files/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ isTrashed: true }),
+        }).catch(() => {});
+      });
+    }
+  });
+}
+
 // ============================================================================
 // DASHBOARD INTERACTION BINDINGS
 // ============================================================================
@@ -2846,6 +3050,7 @@ function bindDashboardEvents() {
     btn.addEventListener("click", () => {
       state.activeNav = btn.getAttribute("data-nav-item");
       state.mobileSidebarOpen = false;
+      state.selectedFileIds?.clear();
       if (state.activeNav !== "ALL") {
         state.currentFolderId = null;
       }
@@ -2858,6 +3063,7 @@ function bindDashboardEvents() {
     state.activeNav = "ALL";
     state.currentFolderId = null;
     state.mobileSidebarOpen = false;
+    state.selectedFileIds?.clear();
     renderDashboard();
   });
 
@@ -2866,6 +3072,7 @@ function bindDashboardEvents() {
       state.activeNav = "ALL";
       state.currentFolderId = btn.getAttribute("data-breadcrumb-folder");
       state.mobileSidebarOpen = false;
+      state.selectedFileIds?.clear();
       renderDashboard();
     });
   });
@@ -2977,6 +3184,7 @@ function bindDashboardEvents() {
     card.addEventListener("click", () => {
       state.activeNav = "ALL";
       state.currentFolderId = card.getAttribute("data-open-folder");
+      state.selectedFileIds?.clear();
       renderDashboard();
     });
   });
@@ -3108,6 +3316,72 @@ function bindDashboardEvents() {
       }
     });
   });
+
+  // --------------------------------------------------------------------------
+  // MULTIPLE SELECT & BULK DELETE CONTROLS
+  // --------------------------------------------------------------------------
+  rootEl.querySelectorAll("[data-select-file]").forEach((chk) => {
+    chk.addEventListener("change", (e) => {
+      e.stopPropagation();
+      const id = chk.getAttribute("data-select-file");
+      if (!id) return;
+      if (!state.selectedFileIds) state.selectedFileIds = new Set();
+      if (chk.checked) {
+        state.selectedFileIds.add(id);
+      } else {
+        state.selectedFileIds.delete(id);
+      }
+      renderDashboard();
+    });
+  });
+
+  const handleToggleSelectAll = (checked) => {
+    if (!state.selectedFileIds) state.selectedFileIds = new Set();
+    const currentCheckboxes = rootEl.querySelectorAll("[data-select-file]");
+    if (checked) {
+      currentCheckboxes.forEach((el) => {
+        const id = el.getAttribute("data-select-file");
+        if (id) state.selectedFileIds.add(id);
+      });
+    } else {
+      state.selectedFileIds.clear();
+    }
+    renderDashboard();
+  };
+
+  document
+    .getElementById("select-all-files-checkbox")
+    ?.addEventListener("change", (e) => {
+      handleToggleSelectAll(e.target.checked);
+    });
+
+  document
+    .getElementById("select-all-files-table")
+    ?.addEventListener("change", (e) => {
+      handleToggleSelectAll(e.target.checked);
+    });
+
+  const clearSelection = () => {
+    if (state.selectedFileIds) state.selectedFileIds.clear();
+    renderDashboard();
+  };
+  document
+    .getElementById("btn-clear-selected-files")
+    ?.addEventListener("click", clearSelection);
+  document
+    .getElementById("btn-floating-clear-selected")
+    ?.addEventListener("click", clearSelection);
+
+  document
+    .getElementById("btn-delete-selected-files")
+    ?.addEventListener("click", () => {
+      deleteSelectedFiles();
+    });
+  document
+    .getElementById("btn-floating-delete-selected")
+    ?.addEventListener("click", () => {
+      deleteSelectedFiles();
+    });
 
   // Preview File Modal
   rootEl.querySelectorAll("[data-preview-file]").forEach((el) => {

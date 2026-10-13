@@ -29,7 +29,60 @@ const rootEl = document.getElementById("app-root");
 const globalFileInput = document.getElementById("global-file-input");
 const globalFolderInput = document.getElementById("global-folder-input");
 
-const FIVE_GB = 5 * 1024 * 1024 * 1024;
+const TEN_GB = 10 * 1024 * 1024 * 1024;
+const FIFTY_GB = 50 * 1024 * 1024 * 1024;
+const HUNDRED_GB = 100 * 1024 * 1024 * 1024;
+const USER_PLAN_STORAGE_PREFIX = "appex_user_plan_v2_";
+
+const STORAGE_PLANS = {
+  FREE_10GB: {
+    id: "FREE_10GB",
+    label: "10.0 GB Free",
+    shortLabel: "10 GB Free",
+    name: "Starter Workspace",
+    quotaBytes: TEN_GB,
+    priceMonthly: "₹0 / Free",
+    isFree: true,
+    features: [
+      "10.0 GB Cloud Media Storage",
+      "Images, 4K Videos & Documents",
+      "Client Review & Share Links",
+      "Real-Time Upload Progress",
+    ],
+  },
+  CREATOR_50GB: {
+    id: "CREATOR_50GB",
+    label: "50.0 GB Pro",
+    shortLabel: "50 GB Pro",
+    name: "Creator Studio",
+    quotaBytes: FIFTY_GB,
+    priceMonthly: "₹399 / mo ($4.99)",
+    isFree: false,
+    features: [
+      "50.0 GB High-Speed Cloud Storage",
+      "Extended Video Deliverables & Masters",
+      "Client Passcode Lock Protection",
+      "Priority Cloud CDN Delivery",
+    ],
+  },
+  STUDIO_100GB: {
+    id: "STUDIO_100GB",
+    label: "100.0 GB Studio Pro",
+    shortLabel: "100 GB Pro",
+    name: "Production Studio",
+    quotaBytes: HUNDRED_GB,
+    priceMonthly: "₹699 / mo ($8.99)",
+    isFree: false,
+    badge: "BEST VALUE",
+    features: [
+      "100.0 GB Dedicated Studio Cloud Vault",
+      "Unlimited Client Review Portals",
+      "Highest Resolution 4K / RAW Assets",
+      "Dedicated High-Speed Bandwidth",
+    ],
+  },
+};
+
 const WORKSPACE_CACHE_KEY = "appex_workspace_cache_v1";
 const LEGACY_DEFAULT_OWNER_KEY = "appex_legacy_default_owner_v1";
 
@@ -244,7 +297,7 @@ const state = {
   shares: cachedWs?.shares || [],
   feedback: cachedWs?.feedback || [],
   storageUsedBytes: 0,
-  storageQuotaBytes: FIVE_GB,
+  storageQuotaBytes: TEN_GB,
 
   // Navigation & Filters
   activeNav: "ALL", // ALL | IMAGE | VIDEO | DOCUMENT | SHARES | REVIEWS | STARRED | TRASH
@@ -260,15 +313,48 @@ const state = {
   showNewFolderModal: false,
   showFirebaseModal: false,
   showGoogleAccountModal: false,
+  showUpgradePlanModal: false,
   shareTarget: null, // { resourceType: 'FOLDER'|'FILE', item }
   createdShareResult: null, // ShareLinkItem after creation
   previewFile: null, // MediaFileItem
 };
 
 /**
- * Per-Login 5.0 GB Free Workspace Isolation Helpers
- * Every Google login gets its own independent 5.0 GB Free Cloud Storage vault.
+ * Per-Login 10.0 GB Free Workspace Isolation & Upgrade Helpers
+ * Every Google login gets its own independent 10.0 GB Free Cloud Storage vault by default,
+ * and can buy/upgrade up to 100 GB Pro.
  */
+function getUserStoragePlan(user = state.user) {
+  const ownerId = getPrimaryUserOwnerId(user);
+  if (!ownerId || ownerId === "anonymous") return STORAGE_PLANS.FREE_10GB;
+  try {
+    const raw = localStorage.getItem(`${USER_PLAN_STORAGE_PREFIX}${ownerId}`);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && STORAGE_PLANS[parsed.id]) {
+        return STORAGE_PLANS[parsed.id];
+      }
+    }
+  } catch {}
+  return STORAGE_PLANS.FREE_10GB;
+}
+
+function setUserStoragePlan(plan, user = state.user) {
+  const ownerId = getPrimaryUserOwnerId(user);
+  if (!ownerId || ownerId === "anonymous") return;
+  try {
+    localStorage.setItem(
+      `${USER_PLAN_STORAGE_PREFIX}${ownerId}`,
+      JSON.stringify({ id: plan.id, upgradedAt: new Date().toISOString() })
+    );
+  } catch {}
+  state.storageQuotaBytes = plan.quotaBytes;
+}
+
+function getCurrentUserQuotaBytes(user = state.user) {
+  return getUserStoragePlan(user).quotaBytes;
+}
+
 function getPrimaryUserOwnerId(user = state.user) {
   if (!user) return "anonymous";
   const email = (user.email || "").toLowerCase().trim();
@@ -547,7 +633,7 @@ function renderGoogleLoginScreen() {
             <div class="flex items-center justify-between gap-2.5">
               <div class="inline-flex items-center gap-1.5 sm:gap-2 px-2 sm:px-2.5 py-1 rounded-md bg-red-500/12 border border-red-400/30 text-[9px] sm:text-[10px] font-mono-code text-red-300 uppercase tracking-wider">
                 <span class="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0"></span>
-                <span class="truncate">Studio Workspace Access • 5 GB Free</span>
+                <span class="truncate">Studio Workspace Access • 10 GB Free</span>
               </div>
               <img
                 data-appex-logo="mark"
@@ -562,7 +648,7 @@ function renderGoogleLoginScreen() {
                 Deliver client media with studio precision.
               </h1>
               <p class="text-xs sm:text-sm text-slate-300 leading-relaxed mt-2 sm:mt-2.5">
-                Every Google login includes <strong class="text-white font-semibold">5.0 GB Free Cloud Storage</strong>. Store high-resolution images, 4K video cuts, and project documents in structured folders and share secure client review links.
+                Every Google login includes <strong class="text-white font-semibold">10.0 GB Free Cloud Storage</strong>. Store high-resolution images, 4K video cuts, and project documents in structured folders, share secure client review links, or upgrade up to 100 GB.
               </p>
             </div>
 
@@ -712,7 +798,7 @@ function renderGoogleLoginScreen() {
         document.getElementById("onboarding-name-input")?.focus();
         return;
       }
-      showToast(`Signed in as ${profile.displayName} • 5.0 GB Free Storage active`, "success");
+      showToast(`Signed in as ${profile.displayName} • 10.0 GB Free Storage active`, "success");
       navigateTo("/dashboard");
     } catch (err) {
       if (
@@ -748,14 +834,14 @@ function renderNewUserOnboardingModal(user) {
 
         <div class="p-6 space-y-4">
           <p class="text-xs text-slate-300">
-            Welcome! Your Google account is verified and includes <strong class="text-emerald-300">5.0 GB Free Cloud Storage</strong>. Please confirm your name to complete your new studio profile:
+            Welcome! Your Google account is verified and includes <strong class="text-emerald-300">10.0 GB Free Cloud Storage</strong>. Please confirm your name to complete your new studio profile:
           </p>
 
           <form id="new-user-onboarding-form" class="space-y-3.5">
             <div>
               <div class="flex items-center justify-between mb-1">
                 <label class="block text-[11px] text-slate-300">Google Email</label>
-                <span class="text-[10px] font-mono-code text-emerald-400">Verified • 5.0 GB Free</span>
+                <span class="text-[10px] font-mono-code text-emerald-400">Verified • 10.0 GB Free</span>
               </div>
               <input
                 type="email"
@@ -778,7 +864,7 @@ function renderNewUserOnboardingModal(user) {
             </div>
 
             <button type="submit" class="btn-studio-primary w-full py-2.5 rounded-lg text-xs flex items-center justify-center gap-2">
-              <span>Continue to Appex Studios</span>
+              <span>Continue to Appex Studios (10 GB Free)</span>
             </button>
           </form>
         </div>
@@ -794,7 +880,7 @@ function bindNewUserOnboardingEvents() {
     const displayName = nameInput ? nameInput.value.trim() : "";
     if (!displayName) return;
     state.user = completeNewUserOnboarding(state.user, displayName);
-    showToast(`Welcome to Appex Studios, ${state.user.displayName} (5.0 GB Free)`, "success");
+    showToast(`Welcome to Appex Studios, ${state.user.displayName} (10.0 GB Free Active)`, "success");
     navigateTo("/dashboard");
   });
 }
@@ -830,13 +916,17 @@ function renderDashboard() {
   const docBytes = activeFiles
     .filter((f) => f.category === "DOCUMENT")
     .reduce((a, b) => a + (Number(b.sizeBytes) || 0), 0);
+  const userPlan = getUserStoragePlan();
+  const userQuotaBytes = userPlan.quotaBytes || TEN_GB;
+  state.storageQuotaBytes = userQuotaBytes;
+
   const totalUsedBytes = imageBytes + videoBytes + docBytes;
   const quotaPct =
-    totalUsedBytes > 0 ? Math.min(100, Math.max(1, (totalUsedBytes / FIVE_GB) * 100)) : 0;
+    totalUsedBytes > 0 ? Math.min(100, Math.max(1, (totalUsedBytes / userQuotaBytes) * 100)) : 0;
 
-  const videoPct = videoBytes > 0 ? Math.max(1.2, (videoBytes / FIVE_GB) * 100) : 0;
-  const imagePct = imageBytes > 0 ? Math.max(1.2, (imageBytes / FIVE_GB) * 100) : 0;
-  const docPct = docBytes > 0 ? Math.max(1, (docBytes / FIVE_GB) * 100) : 0;
+  const videoPct = videoBytes > 0 ? Math.max(1.2, (videoBytes / userQuotaBytes) * 100) : 0;
+  const imagePct = imageBytes > 0 ? Math.max(1.2, (imageBytes / userQuotaBytes) * 100) : 0;
+  const docPct = docBytes > 0 ? Math.max(1, (docBytes / userQuotaBytes) * 100) : 0;
 
   // Compute breadcrumbs when in ALL nav
   const breadcrumbs = [];
@@ -1061,15 +1151,21 @@ function renderDashboard() {
 
         <!-- Bottom Storage Meter & Google Account Card -->
         <div class="space-y-4 pt-6">
-          <!-- Studio Cloud Storage Quota Card (5.0 GB Free per Google Login) -->
+          <!-- Studio Cloud Storage Quota Card (10.0 GB Free by default, Upgrade up to 100 GB) -->
           <div class="glass-card rounded-xl p-3.5 space-y-2.5">
             <div class="flex items-center justify-between text-xs">
               <span class="font-medium text-slate-200 flex items-center gap-1.5">
                 <i data-lucide="hard-drive" class="w-3.5 h-3.5 text-amber-400"></i>
                 <span>Cloud Storage</span>
               </span>
-              <span class="text-[10px] font-mono-code px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/25">
-                5.0 GB Free
+              <span class="text-[10px] font-mono-code px-1.5 py-0.5 rounded ${
+                userPlan.id === "STUDIO_100GB"
+                  ? "bg-amber-500/15 text-amber-300 border border-amber-500/25"
+                  : userPlan.id === "CREATOR_50GB"
+                  ? "bg-sky-500/15 text-sky-300 border border-sky-500/25"
+                  : "bg-emerald-500/15 text-emerald-300 border border-emerald-500/25"
+              }">
+                ${escapeHtml(userPlan.label)}
               </span>
             </div>
 
@@ -1081,8 +1177,21 @@ function renderDashboard() {
 
             <div class="flex items-center justify-between text-[11px] font-mono-code text-slate-400">
               <span>${formatBytes(totalUsedBytes)} used</span>
-              <span>${formatBytes(Math.max(0, FIVE_GB - totalUsedBytes))} free</span>
+              <span>${formatBytes(Math.max(0, userQuotaBytes - totalUsedBytes))} free</span>
             </div>
+
+            <button
+              id="btn-open-upgrade-modal"
+              type="button"
+              class="w-full pt-1.5 pb-1.5 px-2.5 rounded-lg text-[11px] font-medium transition flex items-center justify-center gap-1.5 ${
+                userPlan.id === "STUDIO_100GB"
+                  ? "bg-white/[0.05] text-slate-300 hover:bg-white/[0.09] border border-white/[0.08]"
+                  : "bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 border border-amber-500/30 shadow-sm"
+              }"
+            >
+              <i data-lucide="zap" class="w-3.5 h-3.5 text-amber-400"></i>
+              <span>${userPlan.id === "STUDIO_100GB" ? "Manage Storage Plan (100 GB)" : "Buy More Storage (Up to 100 GB)"}</span>
+            </button>
           </div>
 
           <!-- Signed-in Google User Profile -->
@@ -1303,6 +1412,7 @@ function renderDashboard() {
     ${state.shareTarget ? renderShareModal(state.shareTarget, state.createdShareResult) : ""}
     ${state.previewFile ? renderStudioPreviewModal(state.previewFile) : ""}
     ${state.showFirebaseModal ? renderFirebaseConfigModal() : ""}
+    ${state.showUpgradePlanModal ? renderStorageUpgradeModal() : ""}
   `;
 
   if (window.lucide) window.lucide.createIcons();
@@ -2529,6 +2639,147 @@ function bindFirebaseConfigModalEvents(rerenderFn) {
 }
 
 // ============================================================================
+// STORAGE PLANS & 100 GB UPGRADE MODAL
+// ============================================================================
+function renderStorageUpgradeModal() {
+  const currentPlan = getUserStoragePlan();
+  const currentQuota = getCurrentUserQuotaBytes();
+  const usedBytes = getCurrentUserUsedBytes();
+
+  return `
+    <div class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
+      <div class="glass-modal w-full max-w-2xl rounded-2xl p-5 sm:p-7 animate-modal space-y-6 my-auto">
+        <div class="flex items-start justify-between gap-4 pb-3 border-b border-white/[0.08]">
+          <div class="space-y-1">
+            <div class="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full text-[10px] font-mono-code uppercase bg-amber-500/15 text-amber-300 border border-amber-500/30">
+              <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+              <span>Storage Plans • 10.0 GB Free Included</span>
+            </div>
+            <h3 class="text-lg sm:text-xl font-semibold text-white">Upgrade Your Studio Storage Quota</h3>
+            <p class="text-xs text-slate-300 leading-relaxed">
+              Every new user receives <strong>10.0 GB Free</strong>. Expand up to <strong>100 GB</strong> to store high-resolution stills, 4K video masters, and client deliverables without limits.
+            </p>
+          </div>
+          <button id="close-upgrade-plan-modal" class="glass-button p-1.5 rounded-lg text-slate-400 hover:text-white shrink-0">
+            <i data-lucide="x" class="w-4 h-4"></i>
+          </button>
+        </div>
+
+        <!-- Current Usage Snapshot -->
+        <div class="glass-card p-3.5 rounded-xl flex items-center justify-between gap-3 text-xs">
+          <div class="flex items-center gap-2 min-w-0">
+            <i data-lucide="hard-drive" class="w-4 h-4 text-amber-400 shrink-0"></i>
+            <span class="text-slate-300 truncate">Active Plan: <strong class="text-white">${escapeHtml(currentPlan.name)}</strong> (${escapeHtml(currentPlan.label)})</span>
+          </div>
+          <span class="font-mono-code text-[11px] text-slate-400 shrink-0">${formatBytes(usedBytes)} / ${formatBytes(currentQuota)}</span>
+        </div>
+
+        <!-- Plan Comparison Cards -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+          ${Object.values(STORAGE_PLANS)
+            .map((p) => {
+              const isCurrent = currentPlan.id === p.id;
+              return `
+              <div class="glass-panel rounded-xl p-4 flex flex-col justify-between space-y-4 border ${
+                isCurrent
+                  ? "border-emerald-500/40 bg-emerald-500/[0.05]"
+                  : p.badge
+                  ? "border-amber-400/40 bg-amber-500/[0.04]"
+                  : "border-white/[0.08]"
+              } relative">
+                ${
+                  p.badge
+                    ? `
+                  <div class="absolute -top-2.5 right-3 px-2 py-0.5 rounded-full text-[9px] font-mono-code font-bold bg-amber-400 text-slate-950 uppercase tracking-wider shadow-md">
+                    ${p.badge}
+                  </div>
+                `
+                    : ""
+                }
+                <div class="space-y-2">
+                  <div class="text-xs font-semibold text-white">${escapeHtml(p.name)}</div>
+                  <div class="text-lg sm:text-xl font-bold text-white font-mono-code">${escapeHtml(p.shortLabel)}</div>
+                  <div class="text-xs font-mono-code text-amber-300 font-medium">${escapeHtml(p.priceMonthly)}</div>
+                  <ul class="pt-2 border-t border-white/[0.06] space-y-1.5 text-[11px] text-slate-300">
+                    ${p.features
+                      .map(
+                        (feat) => `
+                      <li class="flex items-start gap-1.5">
+                        <i data-lucide="check" class="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5"></i>
+                        <span>${escapeHtml(feat)}</span>
+                      </li>
+                    `
+                      )
+                      .join("")}
+                  </ul>
+                </div>
+
+                <div class="pt-2">
+                  ${
+                    isCurrent
+                      ? `<div class="w-full py-2 rounded-lg text-xs font-semibold font-mono-code text-emerald-300 bg-emerald-500/20 border border-emerald-500/30 text-center">
+                          ✓ Current Plan
+                        </div>`
+                      : `<button
+                          data-select-plan="${escapeHtml(p.id)}"
+                          class="w-full py-2 rounded-lg text-xs font-semibold transition ${
+                            p.id === "STUDIO_100GB"
+                              ? "btn-studio-primary"
+                              : "glass-button text-white hover:border-white/30"
+                          } flex items-center justify-center gap-1.5"
+                        >
+                          <i data-lucide="zap" class="w-3.5 h-3.5"></i>
+                          <span>${p.isFree ? "Switch to Free" : `Activate ${p.shortLabel}`}</span>
+                        </button>`
+                  }
+                </div>
+              </div>
+            `;
+            })
+            .join("")}
+        </div>
+
+        <div class="flex flex-wrap items-center justify-between gap-3 pt-2 text-[11px] text-slate-400 border-t border-white/[0.06]">
+          <span class="flex items-center gap-1.5">
+            <i data-lucide="shield-check" class="w-3.5 h-3.5 text-emerald-400"></i>
+            <span>Instant activation • 10.0 GB Free included for every account</span>
+          </span>
+          <button id="cancel-upgrade-plan" class="glass-button px-3.5 py-1.5 rounded-lg text-xs text-slate-300">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function bindStorageUpgradeModalEvents(rerenderFn) {
+  const close = () => {
+    state.showUpgradePlanModal = false;
+    rerenderFn();
+  };
+  document.getElementById("close-upgrade-plan-modal")?.addEventListener("click", close);
+  document.getElementById("cancel-upgrade-plan")?.addEventListener("click", close);
+
+  rootEl.querySelectorAll("[data-select-plan]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const planId = btn.getAttribute("data-select-plan");
+      const targetPlan = STORAGE_PLANS[planId];
+      if (!targetPlan) return;
+      setUserStoragePlan(targetPlan);
+      state.showUpgradePlanModal = false;
+      showToast(
+        targetPlan.isFree
+          ? "Switched to 10.0 GB Free Starter Workspace"
+          : `🎉 Successfully upgraded to ${targetPlan.label}!`,
+        "success"
+      );
+      rerenderFn();
+    });
+  });
+}
+
+// ============================================================================
 // DASHBOARD INTERACTION BINDINGS
 // ============================================================================
 function bindDashboardEvents() {
@@ -2610,6 +2861,14 @@ function bindDashboardEvents() {
     showToast("Signed out of Google Workspace", "info");
     navigateTo("/login");
   });
+
+  // Open Storage Upgrade Plans Modal (10 GB Free -> 100 GB Pro)
+  document.getElementById("btn-open-upgrade-modal")?.addEventListener("click", () => {
+    state.mobileSidebarOpen = false;
+    state.showUpgradePlanModal = true;
+    renderDashboard();
+  });
+  bindStorageUpgradeModalEvents(renderDashboard);
 
   // Open Firebase Config
   document.getElementById("open-fb-settings")?.addEventListener("click", () => {
@@ -3172,9 +3431,13 @@ function getCurrentUserUsedBytes() {
 async function handleFilesBatchUpload(fileList) {
   if (!fileList || fileList.length === 0) return;
 
+  const quotaBytes = getCurrentUserQuotaBytes();
   const incomingBytes = fileList.reduce((acc, f) => acc + (Number(f.size) || 0), 0);
-  if (getCurrentUserUsedBytes() + incomingBytes > FIVE_GB) {
-    showToast("Upload exceeds your 5.0 GB Free Cloud Storage quota for this account", "error");
+  if (getCurrentUserUsedBytes() + incomingBytes > quotaBytes) {
+    showToast(
+      `Upload exceeds your ${formatBytes(quotaBytes)} storage limit for this account. Click "Buy More Storage" in the sidebar to upgrade up to 100 GB.`,
+      "error"
+    );
     return;
   }
 
@@ -3229,9 +3492,13 @@ async function handleFilesBatchUpload(fileList) {
 async function handleFolderBatchUpload(fileList) {
   if (!fileList || fileList.length === 0) return;
 
+  const quotaBytes = getCurrentUserQuotaBytes();
   const incomingBytes = fileList.reduce((acc, f) => acc + (Number(f.size) || 0), 0);
-  if (getCurrentUserUsedBytes() + incomingBytes > FIVE_GB) {
-    showToast("Folder upload exceeds your 5.0 GB Free Cloud Storage quota for this account", "error");
+  if (getCurrentUserUsedBytes() + incomingBytes > quotaBytes) {
+    showToast(
+      `Folder upload exceeds your ${formatBytes(quotaBytes)} storage limit for this account. Click "Buy More Storage" in the sidebar to upgrade up to 100 GB.`,
+      "error"
+    );
     return;
   }
 
